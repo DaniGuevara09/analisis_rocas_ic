@@ -1,0 +1,7 @@
+body {
+  margin: var(--margen-cuerpo);
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: var(--fuente-base);
+  font-size: var(--tamano-texto);
+}

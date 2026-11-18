@@ -1,0 +1,68 @@
+.mis-analisis__contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-3);
+  max-width: var(--ancho-contenido-max);
+  margin: 0 auto;
+  padding: var(--espacio-4);
+}
+
+.mis-analisis__barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mis-analisis__titulo {
+  margin: 0;
+  font-size: var(--tamano-titulo);
+}
+
+.mis-analisis__filtros {
+  display: flex;
+  gap: var(--espacio-2);
+}
+
+.mis-analisis__campo {
+  padding: var(--espacio-2);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: inherit;
+  font-size: var(--tamano-texto);
+}
+
+.mis-analisis__aviso {
+  margin: 0;
+  padding: var(--espacio-5);
+  background: var(--color-superficie);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-medio);
+  color: var(--color-texto-secundario);
+  text-align: center;
+}
+
+.mis-analisis__tabla {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-superficie);
+  border: var(--borde-grosor) solid var(--color-borde);
+}
+
+.mis-analisis__tabla th,
+.mis-analisis__tabla td {
+  padding: var(--espacio-2) var(--espacio-3);
+  border-bottom: var(--borde-grosor) solid var(--color-borde);
+  text-align: left;
+}
+
+.mis-analisis__tabla th {
+  color: var(--color-texto-secundario);
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.mis-analisis__acciones {
+  display: flex;
+  gap: var(--espacio-2);
+}

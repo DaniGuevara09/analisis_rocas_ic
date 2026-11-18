@@ -1,0 +1,8 @@
+.mensaje-error {
+  margin: 0;
+  padding: var(--espacio-2) var(--espacio-3);
+  background: var(--color-error-fondo);
+  border: var(--borde-grosor) solid var(--color-error);
+  border-radius: var(--radio-pequeno);
+  color: var(--color-error);
+}

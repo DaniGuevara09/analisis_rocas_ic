@@ -1,0 +1,1 @@
+"""Segmentación de fragmentos: SegmentadorYOLO."""

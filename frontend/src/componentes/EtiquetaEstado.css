@@ -1,0 +1,22 @@
+.etiqueta-estado {
+  display: inline-block;
+  padding: var(--espacio-1) var(--espacio-2);
+  border-radius: var(--radio-pequeno);
+  font-size: var(--tamano-texto-pequeno);
+  font-weight: var(--peso-negrita);
+}
+
+.etiqueta-estado--imagen_cargada {
+  background: var(--color-neutro-fondo);
+  color: var(--color-texto-secundario);
+}
+
+.etiqueta-estado--calibrado {
+  background: var(--color-aviso-fondo);
+  color: var(--color-aviso);
+}
+
+.etiqueta-estado--segmentado {
+  background: var(--color-exito-fondo);
+  color: var(--color-exito);
+}

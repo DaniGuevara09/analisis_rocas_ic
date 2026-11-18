@@ -1,0 +1,71 @@
+:root {
+  /* Colores */
+  --color-fondo: #F4F5F7;
+  --color-superficie: #FFFFFF;
+  --color-encabezado: #3E4C59;
+  --color-acento: #1F3A5F;
+  --color-texto: #1E2226;
+  --color-texto-secundario: #6B7178;
+  --color-borde: #D5D9DD;
+  --color-error: #B00020;
+  --color-sobre-encabezado: #FFFFFF;
+  --color-sobre-acento: #FFFFFF;
+  --color-sobre-error: #FFFFFF;
+  --color-error-fondo: #FBE9EC;
+  --color-exito: #2E6B3A;
+  --color-exito-fondo: #E4F1E7;
+  --color-aviso: #8A5A00;
+  --color-aviso-fondo: #FBF1DC;
+  --color-neutro-fondo: #E6E9EC;
+  --color-deshabilitado: #B8BDC2;
+  --color-lienzo: #E3E6E9;
+  --color-superposicion: rgba(30, 34, 38, 0.5);
+  --color-zona-activa: #E8EEF6;
+
+  /* Trazos del lienzo (Konva) */
+  --color-trazo-calibracion: #E8590C;
+  --color-trazo-region: #C2185B;
+  --color-relleno-region: rgba(194, 24, 91, 0.18);
+  --color-vertice: #FFFFFF;
+  --trazo-grosor: 2;
+  --vertice-radio: 6;
+  --trazo-punteado: 8 6;
+
+  /* Tipografía */
+  --fuente-base: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --tamano-texto-pequeno: 0.875rem;
+  --tamano-texto: 1rem;
+  --tamano-subtitulo: 1.125rem;
+  --tamano-titulo: 1.5rem;
+  --peso-normal: 400;
+  --peso-negrita: 600;
+
+  /* Espaciado */
+  --espacio-1: 0.25rem;
+  --espacio-2: 0.5rem;
+  --espacio-3: 1rem;
+  --espacio-4: 1.5rem;
+  --espacio-5: 2rem;
+
+  /* Radios */
+  --radio-pequeno: 4px;
+  --radio-medio: 8px;
+  --radio-redondo: 50%;
+
+  /* Bordes */
+  --borde-grosor: 1px;
+  --borde-grosor-enfasis: 2px;
+
+  /* Layout */
+  --margen-cuerpo: 0;
+  --ancho-contenido-max: 75rem;
+  --ancho-formulario-max: 40rem;
+  --ancho-panel: 22rem;
+  --alto-lienzo: 70vh;
+  --alto-zona-soltar: 10rem;
+  --ancho-modal: 28rem;
+  --tamano-paso: 2rem;
+  --ancho-campo-corto: 8rem;
+  --opacidad-deshabilitado: 0.55;
+  --capa-modal: 10;
+}

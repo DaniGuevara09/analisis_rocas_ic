@@ -1,0 +1,30 @@
+.boton {
+  padding: var(--espacio-2) var(--espacio-3);
+  border: var(--borde-grosor) solid var(--color-acento);
+  border-radius: var(--radio-pequeno);
+  font-family: inherit;
+  font-size: var(--tamano-texto);
+  font-weight: var(--peso-negrita);
+  cursor: pointer;
+}
+
+.boton--primario {
+  background: var(--color-acento);
+  color: var(--color-sobre-acento);
+}
+
+.boton--secundario {
+  background: var(--color-superficie);
+  color: var(--color-acento);
+}
+
+.boton--peligro {
+  background: var(--color-superficie);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.boton:disabled {
+  opacity: var(--opacidad-deshabilitado);
+  cursor: not-allowed;
+}

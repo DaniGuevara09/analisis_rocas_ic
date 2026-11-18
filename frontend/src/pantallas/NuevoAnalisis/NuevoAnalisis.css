@@ -1,0 +1,58 @@
+.nuevo-analisis__contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-3);
+  max-width: var(--ancho-formulario-max);
+  margin: 0 auto;
+  padding: var(--espacio-4);
+}
+
+.nuevo-analisis__titulo {
+  margin: 0;
+  font-size: var(--tamano-titulo);
+}
+
+.nuevo-analisis__etiqueta {
+  font-weight: var(--peso-negrita);
+}
+
+.nuevo-analisis__campo {
+  padding: var(--espacio-2);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: inherit;
+  font-size: var(--tamano-texto);
+}
+
+.nuevo-analisis__zona {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--alto-zona-soltar);
+  padding: var(--espacio-3);
+  background: var(--color-superficie);
+  border: var(--borde-grosor-enfasis) dashed var(--color-borde);
+  border-radius: var(--radio-medio);
+  color: var(--color-texto-secundario);
+  text-align: center;
+  cursor: pointer;
+}
+
+.nuevo-analisis__zona--activa {
+  background: var(--color-zona-activa);
+  border-color: var(--color-acento);
+}
+
+.nuevo-analisis__archivo {
+  margin: 0;
+  color: var(--color-texto);
+  font-weight: var(--peso-negrita);
+}
+
+.nuevo-analisis__acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--espacio-2);
+}

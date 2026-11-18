@@ -1,0 +1,15 @@
+.lienzo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--alto-lienzo);
+  overflow: hidden;
+  background: var(--color-lienzo);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-medio);
+}
+
+.lienzo__escenario--activo {
+  cursor: crosshair;
+}

@@ -1,0 +1,33 @@
+.modal__fondo {
+  position: fixed;
+  inset: 0;
+  z-index: var(--capa-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-superposicion);
+}
+
+.modal {
+  width: var(--ancho-modal);
+  max-width: 100%;
+  padding: var(--espacio-4);
+  background: var(--color-superficie);
+  border-radius: var(--radio-medio);
+}
+
+.modal__titulo {
+  margin: 0 0 var(--espacio-2);
+  font-size: var(--tamano-subtitulo);
+}
+
+.modal__mensaje {
+  margin: 0 0 var(--espacio-4);
+  color: var(--color-texto-secundario);
+}
+
+.modal__acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--espacio-2);
+}
