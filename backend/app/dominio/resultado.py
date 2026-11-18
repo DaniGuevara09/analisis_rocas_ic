@@ -1,5 +1,6 @@
 """Objetos de valor del resultado granulométrico (se reexportan desde `modelo`)."""
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -22,3 +23,46 @@ class ResultadoGranulometrico:
     indice_n: float
     numero_fragmentos: int
     curva: tuple[PuntoCurva, ...]
+
+
+@dataclass(frozen=True)
+class RangoTamano:
+    """Rango de tamaño [inferior, superior) en mm; sin límite superior si es None (RF-06)."""
+
+    limite_inferior_mm: float
+    limite_superior_mm: float | None
+
+    def contiene(self, diametro_mm: float) -> bool:
+        """Indica si el diámetro cae en el rango (incluye el inferior, excluye el superior)."""
+        if diametro_mm < self.limite_inferior_mm:
+            return False
+        return self.limite_superior_mm is None or diametro_mm < self.limite_superior_mm
+
+
+@dataclass(frozen=True)
+class ClaseHistograma:
+    """Clase del histograma: intervalo en mm, número de fragmentos y % retenido en masa."""
+
+    limite_inferior_mm: float
+    limite_superior_mm: float
+    numero_fragmentos: int
+    porcentaje_retenido: float
+
+
+@dataclass(frozen=True)
+class FragmentoMedido:
+    """Diámetro equivalente de un fragmento y el índice de su rango de tamaño."""
+
+    id: UUID
+    diametro_equivalente_mm: float
+    indice_rango: int
+
+
+@dataclass(frozen=True)
+class ReporteGranulometrico:
+    """Resultado completo para la pantalla de resultados y el informe."""
+
+    resultado: ResultadoGranulometrico
+    rangos: tuple[RangoTamano, ...]
+    histograma: tuple[ClaseHistograma, ...]
+    fragmentos: tuple[FragmentoMedido, ...]

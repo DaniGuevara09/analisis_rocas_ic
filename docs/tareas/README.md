@@ -13,5 +13,11 @@ Cada tarea la redacta el tech lead, la implementa Claude Code y se cierra con un
 | T-005 | Frontend: lista de análisis, carga y calibración (estructura de los wireframes, sin diseño final) | T-004 | Pendiente |
 | T-006 | Almacenamiento de imágenes en Cloudflare R2 y BD en Neon por configuración | T-003 | Asignada |
 
-## Sprint 3 en adelante
-Segmentación con YOLO, editor de polígonos, resultados, exportación. Se detallan al cerrar el Sprint 2.
+## Sprint 3
+
+| ID | Tarea | Depende de | Estado |
+|---|---|---|---|
+| T-007 | Segmentación automática con YOLOv11m-seg (adaptador, caso de uso, API, Docker) | T-004 | Implementada, pendiente de revisión |
+| T-008 | Editor de fragmentos (borrar, dibujar, unir, dividir), resultados (Dx, n, curva, histograma, rangos) e informe PDF | T-007 | Implementada, pendiente de revisión |
+
+Pendiente: exportación CSV (HU-09, Sprint 4).

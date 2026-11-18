@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.dominio.modelo import Analisis, Fragmento, Poligono
+from app.dominio.modelo import Analisis, Fragmento, Poligono, ReporteGranulometrico
 
 Coordenada = Annotated[float, Field(allow_inf_nan=False)]
 LongitudMm = Annotated[float, Field(allow_inf_nan=False)]
@@ -91,6 +91,77 @@ class RegionExcluidaSolicitud(BaseModel):
     poligono: list[PuntoEsquema]
 
 
+class FragmentoSolicitud(BaseModel):
+    """Fragmento editado: sin id si es nuevo (dibujado, unido o dividido)."""
+
+    id: UUID | None = None
+    poligono: list[PuntoEsquema]
+    origen: Literal["MODELO", "MANUAL"] = "MANUAL"
+
+
+class FragmentosSolicitud(BaseModel):
+    """Cuerpo de PUT /analisis/{id}/fragmentos: la lista completa editada."""
+
+    fragmentos: list[FragmentoSolicitud]
+
+
+class PuntoCurvaEsquema(BaseModel):
+    """Punto de la curva granulométrica."""
+
+    diametro_mm: float
+    pasante_pct: float
+
+
+class RangoEsquema(BaseModel):
+    """Rango de tamaño para colorear fragmentos; el frontend asigna el color por índice."""
+
+    indice: int
+    limite_inferior_mm: float
+    limite_superior_mm: float | None
+
+
+class ClaseHistogramaEsquema(BaseModel):
+    """Clase del histograma."""
+
+    limite_inferior_mm: float
+    limite_superior_mm: float
+    numero_fragmentos: int
+    porcentaje_retenido: float
+
+
+class FragmentoMedidoEsquema(BaseModel):
+    """Diámetro y rango de cada fragmento."""
+
+    id: UUID
+    diametro_equivalente_mm: float
+    indice_rango: int
+
+
+class ResultadosEsquema(BaseModel):
+    """Respuesta de GET /analisis/{id}/resultados."""
+
+    d20: float
+    d50: float
+    d60: float
+    d80: float
+    d90: float
+    indice_n: float
+    numero_fragmentos: int
+    curva: list[PuntoCurvaEsquema]
+    rangos: list[RangoEsquema]
+    histograma: list[ClaseHistogramaEsquema]
+    fragmentos: list[FragmentoMedidoEsquema]
+    supuestos: list[str]
+
+
+SUPUESTOS = [
+    "Forma esférica de los fragmentos (diámetro del círculo de igual área).",
+    "Los finos no visibles en la fotografía no se cuentan.",
+    "Medición sobre la superficie 2D visible de la pila.",
+    "Curva ponderada por volumen de esfera equivalente (d³).",
+]
+
+
 class RenombrarSolicitud(BaseModel):
     """Cuerpo de PATCH /analisis/{id}."""
 
@@ -112,18 +183,71 @@ def a_resumen(analisis: Analisis) -> AnalisisResumen:
     )
 
 
+def a_fragmento(fragmento: Fragmento, factor: float | None) -> FragmentoEsquema:
+    """Convierte un fragmento; el diámetro es null sin calibración."""
+    return FragmentoEsquema(
+        id=fragmento.id,
+        poligono=_puntos(fragmento.poligono),
+        origen=fragmento.origen.value,  # type: ignore[arg-type]
+        diametro_equivalente_mm=None
+        if factor is None
+        else fragmento.diametro_equivalente_mm(factor),
+    )
+
+
+def a_fragmentos(analisis: Analisis, fragmentos: list[Fragmento]) -> list[FragmentoEsquema]:
+    """Convierte una lista de fragmentos con la calibración del análisis."""
+    factor = analisis.calibracion.factor_mm_por_px() if analisis.calibracion else None
+    return [a_fragmento(f, factor) for f in fragmentos]
+
+
+def a_resultados(reporte: ReporteGranulometrico) -> ResultadosEsquema:
+    """Convierte el reporte del dominio en la respuesta de resultados."""
+    r = reporte.resultado
+    return ResultadosEsquema(
+        d20=r.d20,
+        d50=r.d50,
+        d60=r.d60,
+        d80=r.d80,
+        d90=r.d90,
+        indice_n=r.indice_n,
+        numero_fragmentos=r.numero_fragmentos,
+        curva=[
+            PuntoCurvaEsquema(diametro_mm=p.diametro_mm, pasante_pct=p.pasante_pct)
+            for p in r.curva
+        ],
+        rangos=[
+            RangoEsquema(
+                indice=i,
+                limite_inferior_mm=rango.limite_inferior_mm,
+                limite_superior_mm=rango.limite_superior_mm,
+            )
+            for i, rango in enumerate(reporte.rangos)
+        ],
+        histograma=[
+            ClaseHistogramaEsquema(
+                limite_inferior_mm=c.limite_inferior_mm,
+                limite_superior_mm=c.limite_superior_mm,
+                numero_fragmentos=c.numero_fragmentos,
+                porcentaje_retenido=c.porcentaje_retenido,
+            )
+            for c in reporte.histograma
+        ],
+        fragmentos=[
+            FragmentoMedidoEsquema(
+                id=m.id,
+                diametro_equivalente_mm=m.diametro_equivalente_mm,
+                indice_rango=m.indice_rango,
+            )
+            for m in reporte.fragmentos
+        ],
+        supuestos=SUPUESTOS,
+    )
+
+
 def a_detalle(analisis: Analisis) -> AnalisisDetalle:
     """Convierte el agregado en su detalle."""
     calibracion = analisis.calibracion
-    factor = calibracion.factor_mm_por_px() if calibracion else None
-
-    def fragmento(f: Fragmento) -> FragmentoEsquema:
-        return FragmentoEsquema(
-            id=f.id,
-            poligono=_puntos(f.poligono),
-            origen=f.origen.value,  # type: ignore[arg-type]
-            diametro_equivalente_mm=None if factor is None else f.diametro_equivalente_mm(factor),
-        )
 
     return AnalisisDetalle(
         **a_resumen(analisis).model_dump(),
@@ -144,5 +268,5 @@ def a_detalle(analisis: Analisis) -> AnalisisDetalle:
         region_excluida=None
         if analisis.region_excluida is None
         else RegionExcluidaEsquema(poligono=_puntos(analisis.region_excluida.poligono)),
-        fragmentos=[fragmento(f) for f in analisis.fragmentos],
+        fragmentos=a_fragmentos(analisis, analisis.fragmentos),
     )

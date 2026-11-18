@@ -14,6 +14,13 @@ import "./MisAnalisis.css";
 
 type FiltroEstado = EstadoAnalisis | "TODOS";
 
+/** Pantalla donde el operador retoma el análisis según su avance. */
+function rutaDeContinuacion(analisis: AnalisisResumen): string {
+  return analisis.estado === "IMAGEN_CARGADA"
+    ? `/analisis/${analisis.id}/calibracion`
+    : `/analisis/${analisis.id}/editor`;
+}
+
 export function MisAnalisis() {
   const navigate = useNavigate();
   const [analisis, setAnalisis] = useState<AnalisisResumen[]>([]);
@@ -120,9 +127,14 @@ export function MisAnalisis() {
                   </td>
                   <td>{a.numero_fragmentos}</td>
                   <td className="mis-analisis__acciones">
-                    <Boton variante="secundario" onClick={() => navigate(`/analisis/${a.id}/calibracion`)}>
+                    <Boton variante="secundario" onClick={() => navigate(rutaDeContinuacion(a))}>
                       Abrir
                     </Boton>
+                    {a.estado === "SEGMENTADO" && a.numero_fragmentos >= 3 && (
+                      <Boton variante="secundario" onClick={() => navigate(`/analisis/${a.id}/resultados`)}>
+                        Resultados
+                      </Boton>
+                    )}
                     <Boton variante="peligro" onClick={() => setPorEliminar(a)}>
                       Eliminar
                     </Boton>

@@ -1,5 +1,13 @@
 import { ErrorApi } from "./errores";
-import type { AnalisisDetalle, AnalisisResumen, Punto, RespuestaCalibracion } from "./tipos";
+import type {
+  AnalisisDetalle,
+  AnalisisResumen,
+  Fragmento,
+  FragmentoSolicitud,
+  Punto,
+  RespuestaCalibracion,
+  Resultados,
+} from "./tipos";
 
 const BASE = "/api";
 const CODIGO_DESCONOCIDO = "ERROR_DESCONOCIDO";
@@ -95,4 +103,23 @@ export async function excluirRegion(id: string, poligono: Punto[]): Promise<Anal
 
 export async function quitarRegion(id: string): Promise<void> {
   await solicitar(`/analisis/${id}/region-excluida`, { method: "DELETE" });
+}
+
+/** Segmenta con el modelo; reemplaza todos los fragmentos (incluidos los editados). */
+export async function segmentar(id: string): Promise<Fragmento[]> {
+  const respuesta = await solicitar(`/analisis/${id}/segmentacion`, { method: "POST" });
+  return (await respuesta.json()) as Fragmento[];
+}
+
+/** Guarda la lista completa de fragmentos editada. */
+export async function guardarFragmentos(
+  id: string,
+  fragmentos: FragmentoSolicitud[],
+): Promise<Fragmento[]> {
+  const respuesta = await solicitar(`/analisis/${id}/fragmentos`, conJson("PUT", { fragmentos }));
+  return (await respuesta.json()) as Fragmento[];
+}
+
+export async function obtenerResultados(id: string): Promise<Resultados> {
+  return (await (await solicitar(`/analisis/${id}/resultados`)).json()) as Resultados;
 }

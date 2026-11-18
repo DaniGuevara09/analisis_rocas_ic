@@ -19,6 +19,8 @@ const MENSAJES: Record<string, string> = {
   NO_ENCONTRADO: "El análisis no existe o fue eliminado.",
   ESCALA_NO_CALIBRADA: "Calibre la escala antes de continuar.",
   DATOS_INSUFICIENTES: "No hay suficientes fragmentos para calcular.",
+  MODELO_NO_DISPONIBLE:
+    "La segmentación automática no está disponible (falta el modelo en el servidor). Puede dibujar los fragmentos a mano.",
   ARCHIVO_DEMASIADO_GRANDE: "La imagen supera el tamaño máximo de 20 MB.",
   SIN_CONEXION: "No se pudo conectar con el servidor. Verifique su conexión e intente de nuevo.",
 };

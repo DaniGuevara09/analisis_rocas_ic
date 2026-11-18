@@ -35,3 +35,44 @@ export function leerEstiloTrazos(): EstiloTrazos {
     punteado: leerLista("--trazo-punteado"),
   };
 }
+
+/** "#rrggbb" + alfa → "rgba(r, g, b, alfa)" (para rellenos semitransparentes de Konva). */
+export function conAlfa(hex: string, alfa: number): string {
+  const limpio = hex.replace("#", "");
+  const r = Number.parseInt(limpio.slice(0, 2), 16);
+  const g = Number.parseInt(limpio.slice(2, 4), 16);
+  const b = Number.parseInt(limpio.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alfa})`;
+}
+
+export const NUMERO_RANGOS = 5;
+
+export interface EstiloFragmentos {
+  colorFragmento: string;
+  colorSeleccionado: string;
+  colorDivision: string;
+  colorDibujo: string;
+  colorVertice: string;
+  alfaRelleno: number;
+  alfaSeleccionado: number;
+  coloresRango: string[];
+  grosor: number;
+  radioVertice: number;
+  punteado: number[];
+}
+
+export function leerEstiloFragmentos(): EstiloFragmentos {
+  return {
+    colorFragmento: leerToken("--color-fragmento"),
+    colorSeleccionado: leerToken("--color-fragmento-seleccionado"),
+    colorDivision: leerToken("--color-trazo-division"),
+    colorDibujo: leerToken("--color-trazo-dibujo"),
+    colorVertice: leerToken("--color-vertice"),
+    alfaRelleno: leerNumero("--alfa-relleno-fragmento"),
+    alfaSeleccionado: leerNumero("--alfa-relleno-seleccionado"),
+    coloresRango: Array.from({ length: NUMERO_RANGOS }, (_, i) => leerToken(`--color-rango-${i}`)),
+    grosor: leerNumero("--trazo-grosor"),
+    radioVertice: leerNumero("--vertice-radio"),
+    punteado: leerLista("--trazo-punteado"),
+  };
+}

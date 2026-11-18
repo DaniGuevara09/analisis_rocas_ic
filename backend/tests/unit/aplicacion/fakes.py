@@ -2,7 +2,7 @@
 from uuid import UUID
 
 from app.dominio.errores import FormatoImagenNoValido
-from app.dominio.modelo import Analisis
+from app.dominio.modelo import Analisis, Poligono
 
 CABECERA_JPG = b"\xff\xd8\xff"
 CABECERA_PNG = b"\x89PNG"
@@ -63,3 +63,17 @@ class InspectorFalso:
         if contenido.startswith(CABECERA_PNG):
             return "PNG", self._ancho_px, self._alto_px
         raise FormatoImagenNoValido("No es JPG ni PNG")
+
+
+class SegmentadorFalso:
+    """Devuelve polígonos fijos y cuenta cuántas veces se llamó."""
+
+    def __init__(self, poligonos: list[Poligono] | None = None) -> None:
+        self.poligonos = poligonos or []
+        self.llamadas = 0
+        self.ultima_imagen: bytes | None = None
+
+    def segmentar(self, imagen: bytes) -> list[Poligono]:
+        self.llamadas += 1
+        self.ultima_imagen = imagen
+        return list(self.poligonos)

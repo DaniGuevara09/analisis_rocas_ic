@@ -3,7 +3,14 @@ import math
 from collections.abc import Sequence
 
 from app.dominio.errores import DatosInsuficientes
-from app.dominio.resultado import PuntoCurva, ResultadoGranulometrico
+from app.dominio.resultado import (
+    ClaseHistograma,
+    PuntoCurva,
+    RangoTamano,
+    ResultadoGranulometrico,
+)
+
+MAXIMO_CLASES_HISTOGRAMA = 12
 
 
 def factor_mm_por_px(longitud_real_mm: float, distancia_px: float) -> float:
@@ -86,4 +93,51 @@ def calcular(diametros_mm: Sequence[float]) -> ResultadoGranulometrico:
         indice_n=indice_uniformidad_n(curva),
         numero_fragmentos=len(diametros_mm),
         curva=tuple(curva),
+    )
+
+
+def rangos_por_defecto(resultado: ResultadoGranulometrico) -> tuple[RangoTamano, ...]:
+    """Rangos de color por defecto, relativos a la curva: <D20, D20-D50, D50-D80, D80-D90, >D90."""
+    limites = [0.0, resultado.d20, resultado.d50, resultado.d80, resultado.d90]
+    rangos = [RangoTamano(a, b) for a, b in zip(limites, limites[1:], strict=False)]
+    return (*rangos, RangoTamano(resultado.d90, None))
+
+
+def indice_rango(diametro_mm: float, rangos: Sequence[RangoTamano]) -> int:
+    """Índice del rango que contiene el diámetro (el último si ninguno lo contiene)."""
+    for indice, rango in enumerate(rangos):
+        if rango.contiene(diametro_mm):
+            return indice
+    return len(rangos) - 1
+
+
+def _numero_clases(cantidad: int) -> int:
+    """Regla de Sturges, acotada a MAXIMO_CLASES_HISTOGRAMA."""
+    return min(MAXIMO_CLASES_HISTOGRAMA, math.ceil(math.log2(cantidad)) + 1)
+
+
+def histograma(
+    diametros_mm: Sequence[float], numero_clases: int | None = None
+) -> tuple[ClaseHistograma, ...]:
+    """Clases de igual ancho entre el menor y el mayor diámetro, con % retenido ponderado."""
+    if not diametros_mm:
+        raise DatosInsuficientes("No hay diametros para el histograma")
+    minimo, maximo = min(diametros_mm), max(diametros_mm)
+    clases = 1 if maximo == minimo else numero_clases or _numero_clases(len(diametros_mm))
+    ancho = (maximo - minimo) / clases
+    conteos = [0] * clases
+    pesos = [0.0] * clases
+    for diametro in diametros_mm:
+        indice = 0 if ancho == 0 else min(int((diametro - minimo) / ancho), clases - 1)
+        conteos[indice] += 1
+        pesos[indice] += ponderacion(diametro)
+    total = sum(pesos)
+    return tuple(
+        ClaseHistograma(
+            limite_inferior_mm=minimo + i * ancho,
+            limite_superior_mm=maximo if i == clases - 1 else minimo + (i + 1) * ancho,
+            numero_fragmentos=conteos[i],
+            porcentaje_retenido=100.0 * pesos[i] / total if total > 0 else 0.0,
+        )
+        for i in range(clases)
     )

@@ -17,6 +17,9 @@ class Configuracion(BaseSettings):
     database_url: str = "postgresql+psycopg://rocas:rocas@localhost:5432/analisis_rocas"
     ruta_imagenes: str = "/datos/imagenes"
     ruta_modelo: str = "/app/modelos/best.pt"
+    segmentacion_confianza: float = 0.25
+    segmentacion_imgsz: int = 640
+    segmentacion_max_det: int = 1000
     almacen_imagenes: Literal["local", "s3"] = "local"
     s3_endpoint_url: str = ""
     s3_bucket: str = ""

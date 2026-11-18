@@ -31,6 +31,32 @@
   --vertice-radio: 6;
   --trazo-punteado: 8 6;
 
+  /* Fragmentos (editor y resultados) */
+  --color-fragmento: #FFD54F;
+  --color-fragmento-seleccionado: #E8590C;
+  --color-trazo-division: #E8590C;
+  --color-trazo-dibujo: #00BFA5;
+  --alfa-relleno-fragmento: 0.3;
+  --alfa-relleno-seleccionado: 0.5;
+
+  /* Rangos de tamaño (RF-06): rampa ordinal azul, claro = fino, oscuro = grueso.
+     Validada (monótona, un solo tono, extremo claro >= 2:1 sobre la superficie). */
+  --color-rango-0: #86b6ef;
+  --color-rango-1: #5598e7;
+  --color-rango-2: #2a78d6;
+  --color-rango-3: #1c5cab;
+  --color-rango-4: #104281;
+
+  /* Gráficos (curva e histograma) */
+  --color-serie: #2a78d6;
+  --color-rejilla: #E6E9EC;
+  --color-eje: #6B7178;
+  --color-referencia: #8A5A00;
+  --grafico-alto: 18rem;
+  --grafico-grosor-linea: 2px;
+  --grafico-radio-marcador: 4px;
+  --grafico-tamano-texto: 0.75rem;
+
   /* Tipografía */
   --fuente-base: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --tamano-texto-pequeno: 0.875rem;
@@ -68,4 +94,11 @@
   --ancho-campo-corto: 8rem;
   --opacidad-deshabilitado: 0.55;
   --capa-modal: 10;
+  --capa-tooltip: 5;
+  --ancho-indicador-min: 8rem;
+  --tamano-cifra: 1.5rem;
+  --ancho-grafico-min: 26rem;
+  --ancho-lateral-min: 16rem;
+  --margen-impresion: 1.5cm;
+  --sombra-flotante: 0 2px 8px rgba(30, 34, 38, 0.18);
 }

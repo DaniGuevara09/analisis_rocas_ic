@@ -1,0 +1,106 @@
+.grafico {
+  position: relative;
+  margin: 0;
+}
+
+.grafico__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: var(--grafico-alto);
+  font-family: var(--fuente-base);
+}
+
+.grafico__rejilla {
+  stroke: var(--color-rejilla);
+  stroke-width: var(--borde-grosor);
+}
+
+.grafico__eje {
+  stroke: var(--color-eje);
+  stroke-width: var(--borde-grosor);
+}
+
+.grafico__marca {
+  fill: var(--color-texto-secundario);
+  font-size: var(--grafico-tamano-texto);
+  font-variant-numeric: tabular-nums;
+}
+
+.grafico__titulo-eje {
+  fill: var(--color-texto-secundario);
+  font-size: var(--grafico-tamano-texto);
+}
+
+.grafico__etiqueta {
+  fill: var(--color-texto);
+  font-size: var(--grafico-tamano-texto);
+  font-weight: var(--peso-negrita);
+}
+
+.grafico__linea {
+  fill: none;
+  stroke: var(--color-serie);
+  stroke-width: var(--grafico-grosor-linea);
+  stroke-linejoin: round;
+}
+
+.grafico__referencia {
+  stroke: var(--color-referencia);
+  stroke-width: var(--borde-grosor);
+  stroke-dasharray: var(--trazo-punteado);
+}
+
+.grafico__guia {
+  stroke: var(--color-eje);
+  stroke-width: var(--borde-grosor);
+}
+
+.grafico__marcador {
+  fill: var(--color-serie);
+  stroke: var(--color-superficie);
+  stroke-width: var(--borde-grosor-enfasis);
+}
+
+.grafico__barra {
+  fill: var(--color-serie);
+}
+
+.grafico__barra--activa {
+  fill: var(--color-acento);
+}
+
+.grafico__zona {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.grafico__tooltip {
+  position: absolute;
+  z-index: var(--capa-tooltip);
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-1);
+  transform: translate(-50%, calc(-100% - var(--espacio-2)));
+  padding: var(--espacio-1) var(--espacio-2);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: var(--tamano-texto-pequeno);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--sombra-flotante);
+}
+
+@media print {
+  .grafico__tooltip,
+  .grafico__guia,
+  .grafico__marcador {
+    display: none;
+  }
+
+  .grafico__svg {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

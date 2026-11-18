@@ -17,19 +17,30 @@ from app.dominio.errores import (
     ImagenNoValida,
     PoligonoNoValido,
 )
-from app.dominio.resultado import PuntoCurva, ResultadoGranulometrico
+from app.dominio.resultado import (
+    ClaseHistograma,
+    FragmentoMedido,
+    PuntoCurva,
+    RangoTamano,
+    ReporteGranulometrico,
+    ResultadoGranulometrico,
+)
 
 __all__ = [
     "Analisis",
     "Calibracion",
+    "ClaseHistograma",
     "EstadoAnalisis",
     "Fragmento",
+    "FragmentoMedido",
     "Imagen",
     "OrigenFragmento",
     "Poligono",
     "Punto",
     "PuntoCurva",
+    "RangoTamano",
     "RegionExcluida",
+    "ReporteGranulometrico",
     "ResultadoGranulometrico",
 ]
 
@@ -275,6 +286,23 @@ class Analisis:
         self.estado = EstadoAnalisis.SEGMENTADO
         return fragmento
 
+    def reemplazar_fragmentos(self, fragmentos: Sequence[Fragmento]) -> None:
+        """Reemplaza la lista completa por la editada por el operador (RF-05).
+
+        Valida todo antes de cambiar: ids únicos, vértices dentro de la imagen y
+        ningún centroide en la región excluida. Deja el estado en SEGMENTADO.
+        """
+        self._exigir_calibracion()
+        if len({f.id for f in fragmentos}) != len(fragmentos):
+            raise DatosNoValidos("Hay fragmentos con el mismo id")
+        for fragmento in fragmentos:
+            if not all(self._dentro_de_imagen(p) for p in fragmento.poligono.puntos):
+                raise PoligonoNoValido("Los fragmentos deben estar dentro de la imagen")
+            if self._en_region_excluida(fragmento.poligono):
+                raise FragmentoEnRegionExcluida("Un fragmento cae en la region excluida")
+        self.fragmentos = list(fragmentos)
+        self.estado = EstadoAnalisis.SEGMENTADO
+
     def eliminar_fragmento(self, id_fragmento: UUID) -> None:
         """Elimina un fragmento por su id."""
         for indice, fragmento in enumerate(self.fragmentos):
@@ -288,6 +316,23 @@ class Analisis:
         factor = self.factor_mm_por_px()
         diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
         return granulometria.calcular(diametros)
+
+    def generar_reporte(self) -> ReporteGranulometrico:
+        """Resultado, rangos de color, histograma y diámetro de cada fragmento."""
+        factor = self.factor_mm_por_px()
+        diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
+        resultado = granulometria.calcular(diametros)
+        rangos = granulometria.rangos_por_defecto(resultado)
+        medidos = tuple(
+            FragmentoMedido(f.id, d, granulometria.indice_rango(d, rangos))
+            for f, d in zip(self.fragmentos, diametros, strict=True)
+        )
+        return ReporteGranulometrico(
+            resultado=resultado,
+            rangos=rangos,
+            histograma=granulometria.histograma(diametros),
+            fragmentos=medidos,
+        )
 
     def _exigir_calibracion(self) -> Calibracion:
         if self.calibracion is None:

@@ -18,6 +18,7 @@ Las rutas marcadas como **[Sprint 3]** o **[Sprint 4]** no se implementan todav�
 | `AnalisisNoEncontrado`, `FragmentoNoEncontrado` | 404 | `NO_ENCONTRADO` |
 | `EscalaNoCalibrada` | 409 | `ESCALA_NO_CALIBRADA` |
 | `DatosInsuficientes` | 409 | `DATOS_INSUFICIENTES` |
+| `ModeloNoDisponible` (aplicación: falta `best.pt` o no cargó) | 503 | `MODELO_NO_DISPONIBLE` |
 | Imagen de más de 20 MB (no es excepción de dominio) | 413 | `ARCHIVO_DEMASIADO_GRANDE` |
 
 ## Rutas
@@ -42,17 +43,21 @@ Las rutas marcadas como **[Sprint 3]** o **[Sprint 4]** no se implementan todav�
 | `PUT /api/analisis/{id}/region-excluida` | `{"poligono":[{"x":..,"y":..}, ...]}` | `200` AnalisisDetalle |
 | `DELETE /api/analisis/{id}/region-excluida` | — | `204` |
 
-### Segmentación y edición — HU-04 a HU-06 **[Sprint 3]**
-| Método y ruta | Salida |
-|---|---|
-| `POST /api/analisis/{id}/segmentacion` | `200` lista de Fragmento · `409 ESCALA_NO_CALIBRADA` |
-| `PUT /api/analisis/{id}/fragmentos` | Reemplaza la lista completa de fragmentos editada por el operador |
+### Segmentación y edición — HU-04 a HU-06
+| Método y ruta | Entrada | Salida |
+|---|---|---|
+| `POST /api/analisis/{id}/segmentacion` | — | `200` lista de Fragmento (origen `MODELO`; reemplaza **todos** los fragmentos) · `404` · `409 ESCALA_NO_CALIBRADA` · `503 MODELO_NO_DISPONIBLE` |
+| `PUT /api/analisis/{id}/fragmentos` | `{"fragmentos": [FragmentoSolicitud, ...]}` | `200` lista de Fragmento vigente · `404` · `409 ESCALA_NO_CALIBRADA` · `422` (polígono inválido, fuera de la imagen, en la región excluida o ids repetidos) |
 
-### Resultados y exportación — HU-07 a HU-09 **[Sprint 3–4]**
+`PUT /fragmentos` reemplaza la lista completa: el editor envía todos los fragmentos que quedan. Unir y dividir se calculan en el frontend (`polygon-clipping`, solo geometría de contornos); el resultado se envía como fragmentos nuevos sin `id`.
+
+### Resultados y exportación — HU-07 a HU-09
 | Método y ruta | Salida |
 |---|---|
-| `GET /api/analisis/{id}/resultados` | ResultadoGranulometrico + rango de cada fragmento |
-| `GET /api/analisis/{id}/resultados.csv` | CSV con tamaño por fragmento, indicadores y supuestos (RNF-07) |
+| `GET /api/analisis/{id}/resultados` | `200` Resultados · `409 DATOS_INSUFICIENTES` (menos de 3 fragmentos) · `409 ESCALA_NO_CALIBRADA` |
+| `GET /api/analisis/{id}/resultados.csv` **[Sprint 4]** | CSV con tamaño por fragmento, indicadores y supuestos (RNF-07) |
+
+El informe PDF (RF-11) se genera en el navegador: la pantalla de resultados tiene estilos de impresión y el botón "Exportar PDF" abre *Imprimir → Guardar como PDF*. No hay ruta de API para el PDF.
 
 ## Esquemas
 
@@ -66,4 +71,11 @@ AnalisisDetalle  AnalisisResumen + {
                    fragmentos: Fragmento[]
                  }
 Fragmento        { id: uuid, poligono: Punto[], origen: "MODELO"|"MANUAL", diametro_equivalente_mm: float | null }
+FragmentoSolicitud { id?: uuid (omitir si es nuevo), poligono: Punto[], origen: "MODELO"|"MANUAL" (por defecto "MANUAL") }
+Resultados       { d20, d50, d60, d80, d90: float (mm), indice_n: float, numero_fragmentos: int,
+                   curva: { diametro_mm, pasante_pct }[],
+                   rangos: { indice: 0..4, limite_inferior_mm, limite_superior_mm | null }[],
+                   histograma: { limite_inferior_mm, limite_superior_mm, numero_fragmentos, porcentaje_retenido }[],
+                   fragmentos: { id, diametro_equivalente_mm, indice_rango }[],
+                   supuestos: str[] }
 ```

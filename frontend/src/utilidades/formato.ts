@@ -15,3 +15,12 @@ export function formatearTamano(bytes: number): string {
   }
   return `${Math.max(1, Math.round(bytes / BYTES_POR_KB))} KB`;
 }
+
+/** Número con coma decimal (es-CO) y a lo sumo `decimales` cifras decimales. */
+export function formatearNumero(valor: number, decimales = 1): string {
+  return valor.toLocaleString("es-CO", { maximumFractionDigits: decimales, minimumFractionDigits: 0 });
+}
+
+export function formatearMm(valor: number): string {
+  return `${formatearNumero(valor, 1)} mm`;
+}

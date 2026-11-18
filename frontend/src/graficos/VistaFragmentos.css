@@ -1,0 +1,30 @@
+.vista-fragmentos {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radio-medio);
+  background: var(--color-lienzo);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.vista-fragmentos__poligono {
+  fill-opacity: var(--alfa-relleno-fragmento);
+  stroke-width: var(--borde-grosor-enfasis);
+  vector-effect: non-scaling-stroke;
+}
+
+.vista-fragmentos__poligono:hover {
+  fill-opacity: var(--alfa-relleno-seleccionado);
+}
+
+.vista-fragmentos__poligono--0 { fill: var(--color-rango-0); stroke: var(--color-rango-0); }
+.vista-fragmentos__poligono--1 { fill: var(--color-rango-1); stroke: var(--color-rango-1); }
+.vista-fragmentos__poligono--2 { fill: var(--color-rango-2); stroke: var(--color-rango-2); }
+.vista-fragmentos__poligono--3 { fill: var(--color-rango-3); stroke: var(--color-rango-3); }
+.vista-fragmentos__poligono--4 { fill: var(--color-rango-4); stroke: var(--color-rango-4); }
+
+.vista-fragmentos__poligono--sin-rango {
+  fill: var(--color-fragmento);
+  stroke: var(--color-fragmento);
+}

@@ -1,0 +1,49 @@
+.lienzo-fragmentos {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--alto-lienzo);
+  overflow: hidden;
+  background: var(--color-lienzo);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-medio);
+}
+
+.lienzo-fragmentos__escenario {
+  cursor: pointer;
+}
+
+.lienzo-fragmentos__escenario--trazo {
+  cursor: crosshair;
+}
+
+.lienzo-fragmentos__ajustar {
+  position: absolute;
+  top: var(--espacio-2);
+  right: var(--espacio-2);
+  padding: var(--espacio-1) var(--espacio-2);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-acento);
+  font-family: inherit;
+  font-size: var(--tamano-texto-pequeno);
+  cursor: pointer;
+  box-shadow: var(--sombra-flotante);
+}
+
+.lienzo-fragmentos__etiqueta {
+  position: absolute;
+  z-index: var(--capa-tooltip);
+  transform: translate(var(--espacio-3), var(--espacio-3));
+  padding: var(--espacio-1) var(--espacio-2);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: var(--tamano-texto-pequeno);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--sombra-flotante);
+}

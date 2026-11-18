@@ -56,7 +56,8 @@ analisis_rocas/
         ├── api/                  # cliente HTTP tipado según docs/api.md
         ├── componentes/          # piezas reutilizables (botón, indicador de pasos, tabla...)
         ├── editor/               # editor de polígonos con Konva
-        └── pantallas/            # MisAnalisis, NuevoAnalisis, Calibracion, Editor, Resultados
+        ├── graficos/             # curva, histograma y vista de fragmentos en SVG
+        └── pantallas/            # MisAnalisis, NuevoAnalisis, CalibrarExcluir, EditorFragmentos, Resultados
 ```
 
 ## Puertos (capa de aplicación)
@@ -104,6 +105,18 @@ En desarrollo se permite exponer 8000 y 5432 en `localhost` mediante un `docker-
 |---|---|---|
 | `AlmacenArchivosLocal` | `AlmacenImagenes` | Carpeta `RUTA_IMAGENES` (volumen `imagenes`) |
 | `AlmacenImagenesS3` | `AlmacenImagenes` | Bucket privado S3/R2 con boto3; cliente inyectado (`crear_cliente_s3`) |
+
+### Segmentador por configuración
+
+`crear_segmentador(config)` en `main.py` crea `SegmentadorYOLO` si existe el archivo `RUTA_MODELO`; si no existe o no carga, crea `SegmentadorNoDisponible` y la app **arranca igual**: solo `POST /segmentacion` responde `503 MODELO_NO_DISPONIBLE` (RNF-06: los pesos no se versionan).
+
+| Adaptador | Puerto | Detalle |
+|---|---|---|
+| `SegmentadorYOLO` | `Segmentador` | ultralytics, carga el modelo una vez; `imgsz=640`, `conf=0.25`, `iou=0.5`, `max_det=1000`, `retina_masks=False`. `import ultralytics` diferido |
+| `SegmentadorNoDisponible` | `Segmentador` | Lanza `ModeloNoDisponible` (error de aplicación) |
+| `contornos.poligonos_desde_contornos` | — | Función pura: recorta a la imagen, simplifica con Douglas-Peucker (1 px, implementación propia sin OpenCV) y descarta contornos de menos de 3 puntos, colineales o de área < 20 px² |
+
+Dependencias: el extra `[yolo]` de `pyproject.toml` (`ultralytics`). El Dockerfile instala antes `torch` solo CPU y `libgl1`/`libglib2.0-0` para OpenCV. Para desarrollar fuera de Docker no hace falta: `pip install -e ".[dev]"` no trae torch y las pruebas del modelo real se saltan.
 
 Con `s3` son obligatorias `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY` (`S3_REGION=auto` para R2); si falta alguna, la app no arranca y el error no imprime valores.
 

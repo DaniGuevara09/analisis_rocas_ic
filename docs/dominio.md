@@ -12,7 +12,9 @@
 | `Poligono` | Objeto de valor | puntos (≥ 3) | `area()` (fórmula del zapato), `contiene(punto)`, `centroide()` |
 | `Punto` | Objeto de valor | x, y (float, px) | — |
 | `ResultadoGranulometrico` | Objeto de valor | d20, d50, d60, d80, d90, indice_n, numero_fragmentos, curva | Solo lectura |
-| `RangoTamano` | Objeto de valor | limite_inferior_mm, limite_superior_mm, color | Rangos sin solapamiento |
+| `RangoTamano` | Objeto de valor | limite_inferior_mm, limite_superior_mm (None = sin límite) | Intervalo [inferior, superior); rangos sin solapamiento. El color no está en el dominio: el frontend lo asigna por índice con los tokens `--color-rango-0..4` |
+| `ClaseHistograma` | Objeto de valor | limite_inferior_mm, limite_superior_mm, numero_fragmentos, porcentaje_retenido | Solo lectura |
+| `ReporteGranulometrico` | Objeto de valor | resultado, rangos, histograma, fragmentos (id, diámetro, índice de rango) | Lo produce `Analisis.generar_reporte()` |
 
 ### Reglas del agregado `Analisis`
 
@@ -60,6 +62,12 @@ Todas son funciones puras y deben tener pruebas unitarias con valores calculados
    - `excluir_region(poligono)` fija la región y **elimina los fragmentos existentes** (de cualquier origen) cuyo centroide quede dentro.
    - `registrar_fragmentos(poligonos, origen)` **reemplaza todos** los fragmentos existentes por los nuevos; los que caigan en la región excluida se omiten.
    - `agregar_fragmento(poligono)` lanza `FragmentoEnRegionExcluida` si el centroide cae en la región excluida.
+
+9. **Rangos de tamaño por defecto (RF-06)** — relativos a la curva: `[0, D20)`, `[D20, D50)`, `[D50, D80)`, `[D80, D90)`, `[D90, ∞)`. Se adaptan a cualquier escala de foto. Un fragmento pertenece al primer rango que lo contiene (`indice_rango`).
+
+10. **Histograma (RF-08)** — clases de igual ancho entre el diámetro menor y el mayor; número de clases por la regla de Sturges `ceil(log2(N)) + 1`, máximo 12 (una sola clase si todos los diámetros son iguales). Cada clase informa el número de fragmentos y el `% retenido` con la misma `ponderacion` de la curva (d³). El diámetro máximo cae en la última clase.
+
+11. **Edición de fragmentos (RF-05)** — `reemplazar_fragmentos(fragmentos)` sustituye la lista completa por la editada (conserva ids y origen). Exige calibración; valida **antes de cambiar** que no haya ids repetidos (`DatosNoValidos`), que todos los vértices estén dentro de la imagen (`PoligonoNoValido`) y que ningún centroide caiga en la región excluida (`FragmentoEnRegionExcluida`). Deja el estado en `SEGMENTADO`.
 
 ## Errores de dominio (`dominio/errores.py`)
 

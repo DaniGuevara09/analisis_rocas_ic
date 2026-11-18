@@ -235,8 +235,12 @@ export function CalibrarExcluir() {
             </section>
 
             <section className="calibrar__seccion">
-              <Boton disabled>Segmentar</Boton>
-              <p className="calibrar__ayuda">Disponible en el Sprint 3</p>
+              <Boton onClick={() => navigate(`/analisis/${id}/editor`)} disabled={estado === "IMAGEN_CARGADA"}>
+                Continuar: segmentar y editar
+              </Boton>
+              {estado === "IMAGEN_CARGADA" && (
+                <p className="calibrar__ayuda">Calibre la escala para continuar.</p>
+              )}
             </section>
 
             <Boton variante="secundario" onClick={() => navigate("/")}>

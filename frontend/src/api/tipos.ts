@@ -52,3 +52,50 @@ export interface RespuestaCalibracion {
   factor_mm_por_px: number;
   estado: EstadoAnalisis;
 }
+
+/** Fragmento que el editor envía en PUT /fragmentos; sin id si es nuevo. */
+export interface FragmentoSolicitud {
+  id?: string;
+  poligono: Punto[];
+  origen: OrigenFragmento;
+}
+
+export interface PuntoCurva {
+  diametro_mm: number;
+  pasante_pct: number;
+}
+
+export interface RangoTamano {
+  indice: number;
+  limite_inferior_mm: number;
+  limite_superior_mm: number | null;
+}
+
+export interface ClaseHistograma {
+  limite_inferior_mm: number;
+  limite_superior_mm: number;
+  numero_fragmentos: number;
+  porcentaje_retenido: number;
+}
+
+export interface FragmentoMedido {
+  id: string;
+  diametro_equivalente_mm: number;
+  indice_rango: number;
+}
+
+/** Respuesta de GET /analisis/{id}/resultados. */
+export interface Resultados {
+  d20: number;
+  d50: number;
+  d60: number;
+  d80: number;
+  d90: number;
+  indice_n: number;
+  numero_fragmentos: number;
+  curva: PuntoCurva[];
+  rangos: RangoTamano[];
+  histograma: ClaseHistograma[];
+  fragmentos: FragmentoMedido[];
+  supuestos: string[];
+}
