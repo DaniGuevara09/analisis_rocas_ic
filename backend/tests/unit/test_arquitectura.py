@@ -1,16 +1,33 @@
 """Protege la regla hexagonal: las dependencias apuntan hacia adentro."""
+
 import ast
 from pathlib import Path
 
 RAIZ_APP = Path(__file__).resolve().parents[2] / "app"
 
 PROHIBIDOS_DOMINIO = {
-    "fastapi", "sqlalchemy", "pydantic", "pydantic_settings", "ultralytics", "alembic",
-    "boto3", "botocore", "os", "pathlib", "app.aplicacion", "app.adaptadores",
+    "fastapi",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic_settings",
+    "ultralytics",
+    "alembic",
+    "boto3",
+    "botocore",
+    "os",
+    "pathlib",
+    "app.aplicacion",
+    "app.adaptadores",
 }
 PROHIBIDOS_APLICACION = {
-    "boto3", "botocore", "fastapi", "sqlalchemy", "pydantic", "pydantic_settings",
-    "ultralytics", "alembic",
+    "boto3",
+    "botocore",
+    "fastapi",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic_settings",
+    "ultralytics",
+    "alembic",
     "app.adaptadores",
 }
 

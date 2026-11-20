@@ -131,6 +131,10 @@ export function urlCsv(id: string): string {
   return `${BASE}/analisis/${id}/resultados.csv`;
 }
 
+export function urlXlsx(id: string): string {
+  return `${BASE}/analisis/${id}/resultados.xlsx`;
+}
+
 export async function obtenerSalud(): Promise<Salud> {
   return (await (await solicitar("/salud")).json()) as Salud;
 }

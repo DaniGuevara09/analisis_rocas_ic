@@ -1,4 +1,5 @@
 """Composición: crea la app FastAPI, instancia los adaptadores y los conecta."""
+
 import logging
 from pathlib import Path
 

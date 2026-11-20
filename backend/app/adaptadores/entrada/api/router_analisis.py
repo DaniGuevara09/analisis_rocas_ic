@@ -1,4 +1,5 @@
 """Rutas CRUD de análisis (docs/api.md)."""
+
 from typing import Annotated
 from uuid import UUID
 

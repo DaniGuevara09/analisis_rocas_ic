@@ -11,10 +11,10 @@
 | `Fragmento` | Entidad | id, poligono, origen (MODELO/MANUAL) | `area_px()`, `diametro_equivalente_mm(factor)` |
 | `Poligono` | Objeto de valor | puntos (≥ 3) | `area()` (fórmula del zapato), `contiene(punto)`, `centroide()` |
 | `Punto` | Objeto de valor | x, y (float, px) | — |
-| `ResultadoGranulometrico` | Objeto de valor | d20, d50, d60, d80, d90, indice_n, numero_fragmentos, curva | Solo lectura |
+| `ResultadoGranulometrico` | Objeto de valor | d20, d50, d60, d80, d90, indice_n, tamano_caracteristico_mm (x_c), numero_fragmentos, curva, curva_teorica (Rosin-Rammler ajustada) | Solo lectura |
 | `RangoTamano` | Objeto de valor | limite_inferior_mm, limite_superior_mm (None = sin límite) | Intervalo [inferior, superior); rangos sin solapamiento |
 | `ConfiguracionRangos` | Objeto de valor (`dominio/configuracion.py`) | modo (RELATIVO/ABSOLUTO), cortes, nombres, colores | 1–7 cortes estrictamente crecientes y > 0 (en RELATIVO < 100); un nombre (1–40 caracteres) y un color `#rrggbb` por rango. `rangos(curva)` da los límites en mm (RF-14) |
-| `ClaseHistograma` | Objeto de valor | limite_inferior_mm, limite_superior_mm, numero_fragmentos, porcentaje_retenido | Solo lectura |
+| `ClaseHistograma` | Objeto de valor | limite_inferior_mm, limite_superior_mm (None en el último rango), numero_fragmentos, porcentaje_retenido | Solo lectura; una clase por rango de tamaño |
 | `ReporteGranulometrico` | Objeto de valor | resultado, rangos, histograma, fragmentos (id, diámetro, índice de rango) | Lo produce `Analisis.generar_reporte()` |
 
 ### Reglas del agregado `Analisis`
@@ -54,8 +54,11 @@ Todas son funciones puras y deben tener pruebas unitarias con valores calculados
 7. **Índice de uniformidad n (Rosin-Rammler)**
    `P(x) = 1 − exp(−(x / x_c)^n)`
    Linealización: `ln(−ln(1 − P)) = n·ln(x) − n·ln(x_c)`.
-   Ajustar por mínimos cuadrados usando solo los puntos con `0 < P < 1` (P en fracción, no en %). `n` es la pendiente.
-   Si hay menos de 2 puntos válidos, lanzar `DatosInsuficientes`.
+   Ajustar por mínimos cuadrados usando solo el **tramo central de la curva, 10 % ≤ P ≤ 90 %** (`PASANTE_MINIMO_AJUSTE`, `PASANTE_MAXIMO_AJUSTE`). `n` es la pendiente y `x_c = exp(−intercepto / n)` es el tamaño con 63,2 % pasante (`ajuste_rosin_rammler` devuelve ambos).
+   > Por qué el tramo central: la curva se pondera por d³, así que en la cola de finos P crece como d³ y su pendiente tiende a 3. Como casi todos los fragmentos son pequeños, con todos los puntos la regresión daba n ≈ 3–4 y un modelo que no pasaba por la curva medida (T-011).
+
+   Si el tramo central tiene menos de 2 diámetros distintos, se ajusta con todos los puntos con `0 < P < 100`. Si aun así hay menos de 2 puntos válidos, lanzar `DatosInsuficientes`.
+   La API entrega también `curva_teorica`: P(x) del modelo ajustado en 60 puntos con espaciado logarítmico entre el diámetro menor y el mayor, para superponerla a la curva medida.
 
    Consecuencia: `calcular` requiere **al menos 3 fragmentos**. Con menos de 2 puntos con 0 < P < 100 en la curva no hay ajuste de Rosin-Rammler y se lanza `DatosInsuficientes`.
 
@@ -64,11 +67,11 @@ Todas son funciones puras y deben tener pruebas unitarias con valores calculados
    - `registrar_fragmentos(poligonos, origen)` **reemplaza todos** los fragmentos existentes por los nuevos; los que caigan en la región excluida se omiten.
    - `agregar_fragmento(poligono)` lanza `FragmentoEnRegionExcluida` si el centroide cae en la región excluida.
 
-9. **Rangos de tamaño (RF-06, RF-14)** — por defecto (`CONFIGURACION_POR_DEFECTO`) son relativos a la curva: `[0, D20)`, `[D20, D50)`, `[D50, D80)`, `[D80, D90)`, `[D90, ∞)`, con nombres Finos…Sobretamaño y una rampa azul validada. El operador puede cambiarlos (modo RELATIVO: cortes en % pasante, el límite es `percentil_dx(curva, corte)`; modo ABSOLUTO: cortes en mm). Un fragmento pertenece al primer rango que lo contiene (`indice_rango`).
+9. **Rangos de tamaño (RF-06, RF-14)** — por defecto (`CONFIGURACION_POR_DEFECTO`) son **límites fijos en mm**: `[0, 50)` Finos, `[50, 150)` Pequeños, `[150, 400)` Medianos, `[400, 800)` Gruesos y `[800, ∞)` Sobretamaño, con colores de alto contraste sobre roca gris (celeste, verde, amarillo, naranja y rojo). Con límites fijos, cada nombre significa lo mismo en todas las fotos (con cortes relativos, "Finos" podía ser < 519 mm). Los valores son iniciales: cada planta los ajusta en Configuración. El operador puede cambiarlos (modo RELATIVO: cortes en % pasante, el límite es `percentil_dx(curva, corte)`; modo ABSOLUTO: cortes en mm). Un fragmento pertenece al primer rango que lo contiene (`indice_rango`).
 
-10. **Histograma (RF-08)** — clases de igual ancho entre el diámetro menor y el mayor; número de clases por la regla de Sturges `ceil(log2(N)) + 1`, máximo 12 (una sola clase si todos los diámetros son iguales). Cada clase informa el número de fragmentos y el `% retenido` con la misma `ponderacion` de la curva (d³). El diámetro máximo cae en la última clase.
+10. **Histograma (RF-08)** — **una clase por rango de tamaño** (los mismos de la leyenda, con su nombre y color). Cada clase informa el número de fragmentos y el `% retenido` con la misma `ponderacion` de la curva (d³). Así el histograma, la leyenda y la imagen coloreada usan los mismos cortes.
 
-11. **Edición de fragmentos (RF-05)** — `reemplazar_fragmentos(fragmentos)` sustituye la lista completa por la editada (conserva ids y origen). Exige calibración; valida **antes de cambiar** que no haya ids repetidos (`DatosNoValidos`), que todos los vértices estén dentro de la imagen (`PoligonoNoValido`) y que ningún centroide caiga en la región excluida (`FragmentoEnRegionExcluida`). Deja el estado en `SEGMENTADO`.
+11. **Edición de fragmentos (RF-05)** — `reemplazar_fragmentos(fragmentos)` sustituye la lista completa por la editada (conserva ids y origen). Exige calibración; valida **antes de cambiar** que no haya ids repetidos (`DatosNoValidos`), que cada polígono tenga al menos `AREA_MINIMA_FRAGMENTO_PX2` = 20 px² (`PoligonoNoValido`; por debajo es un clic accidental, y es el mismo umbral con el que se descartan las máscaras del modelo), que todos los vértices estén dentro de la imagen (`PoligonoNoValido`) y que ningún centroide caiga en la región excluida (`FragmentoEnRegionExcluida`). Deja el estado en `SEGMENTADO`.
 
 ## Errores de dominio (`dominio/errores.py`)
 

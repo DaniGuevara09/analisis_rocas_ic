@@ -1,4 +1,5 @@
 """Esquemas Pydantic de la API (ver docs/api.md)."""
+
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -6,7 +7,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.dominio.configuracion import ConfiguracionRangos
-from app.dominio.modelo import Analisis, Fragmento, Poligono, ReporteGranulometrico
+from app.dominio.modelo import (
+    Analisis,
+    Fragmento,
+    Poligono,
+    PuntoCurva,
+    ReporteGranulometrico,
+)
 
 Coordenada = Annotated[float, Field(allow_inf_nan=False)]
 LongitudMm = Annotated[float, Field(allow_inf_nan=False)]
@@ -136,7 +143,7 @@ class ClaseHistogramaEsquema(BaseModel):
     """Clase del histograma."""
 
     limite_inferior_mm: float
-    limite_superior_mm: float
+    limite_superior_mm: float | None
     numero_fragmentos: int
     porcentaje_retenido: float
 
@@ -158,8 +165,10 @@ class ResultadosEsquema(BaseModel):
     d80: float
     d90: float
     indice_n: float
+    tamano_caracteristico_mm: float
     numero_fragmentos: int
     curva: list[PuntoCurvaEsquema]
+    curva_teorica: list[PuntoCurvaEsquema]
     rangos: list[RangoEsquema]
     histograma: list[ClaseHistogramaEsquema]
     fragmentos: list[FragmentoMedidoEsquema]
@@ -171,6 +180,7 @@ SUPUESTOS = [
     "Los finos no visibles en la fotografía no se cuentan.",
     "Medición sobre la superficie 2D visible de la pila.",
     "Curva ponderada por volumen de esfera equivalente (d³).",
+    "Rosin-Rammler (n y x_c) ajustado en el tramo central de la curva, entre 10 % y 90 % pasante.",
 ]
 
 
@@ -213,6 +223,10 @@ def a_fragmentos(analisis: Analisis, fragmentos: list[Fragmento]) -> list[Fragme
     return [a_fragmento(f, factor) for f in fragmentos]
 
 
+def _curva(puntos: tuple[PuntoCurva, ...]) -> list[PuntoCurvaEsquema]:
+    return [PuntoCurvaEsquema(diametro_mm=p.diametro_mm, pasante_pct=p.pasante_pct) for p in puntos]
+
+
 def a_resultados(reporte: ReporteGranulometrico) -> ResultadosEsquema:
     """Convierte el reporte del dominio en la respuesta de resultados."""
     r = reporte.resultado
@@ -223,11 +237,10 @@ def a_resultados(reporte: ReporteGranulometrico) -> ResultadosEsquema:
         d80=r.d80,
         d90=r.d90,
         indice_n=r.indice_n,
+        tamano_caracteristico_mm=r.tamano_caracteristico_mm,
         numero_fragmentos=r.numero_fragmentos,
-        curva=[
-            PuntoCurvaEsquema(diametro_mm=p.diametro_mm, pasante_pct=p.pasante_pct)
-            for p in r.curva
-        ],
+        curva=_curva(r.curva),
+        curva_teorica=_curva(r.curva_teorica),
         rangos=[
             RangoEsquema(
                 indice=i,

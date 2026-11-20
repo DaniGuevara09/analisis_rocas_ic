@@ -13,6 +13,29 @@ import { formatearTamano } from "../../utilidades/formato";
 import "./NuevoAnalisis.css";
 
 const TAMANO_MAXIMO_BYTES = 20 * 1024 * 1024;
+/** Igual que el dominio (LONGITUD_MAXIMA_NOMBRE en backend/app/dominio/modelo.py). */
+export const LONGITUD_MAXIMA_NOMBRE = 150;
+
+/** Validación del nombre (el servidor también la hace). Devuelve el mensaje o "". */
+export function validarNombre(nombre: string): string {
+  const limpio = nombre.trim();
+  if (!limpio) {
+    return "Escriba un nombre para identificar el análisis.";
+  }
+  if (limpio.length > LONGITUD_MAXIMA_NOMBRE) {
+    return `El nombre no puede superar ${LONGITUD_MAXIMA_NOMBRE} caracteres (tiene ${limpio.length}).`;
+  }
+  return "";
+}
+
+/** Nombre sugerido a partir del archivo: sin extensión y con espacios en lugar de _ y -. */
+export function nombreDesdeArchivo(nombreArchivo: string): string {
+  return nombreArchivo
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .slice(0, LONGITUD_MAXIMA_NOMBRE);
+}
 const EXTENSION_VALIDA = /\.(jpe?g|png)$/i;
 
 /** Validación previa en el cliente; la autoridad es el servidor. Devuelve el mensaje o "". */
@@ -32,6 +55,8 @@ export function NuevoAnalisis() {
   const [nombre, setNombre] = useState("");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [errorNombre, setErrorNombre] = useState("");
+  const [nombreTocado, setNombreTocado] = useState(false);
   const [arrastrando, setArrastrando] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
@@ -42,6 +67,17 @@ export function NuevoAnalisis() {
     const problema = validarArchivo(candidato);
     setError(problema);
     setArchivo(problema ? null : candidato);
+    if (!problema && !nombre.trim()) {
+      setNombre(nombreDesdeArchivo(candidato.name));
+      setErrorNombre("");
+    }
+  };
+
+  const cambiarNombre = (valor: string) => {
+    setNombre(valor);
+    if (nombreTocado) {
+      setErrorNombre(validarNombre(valor));
+    }
   };
 
   const alSoltar = (evento: DragEvent<HTMLDivElement>) => {
@@ -58,15 +94,29 @@ export function NuevoAnalisis() {
   };
 
   const continuar = async () => {
+    const problemaNombre = validarNombre(nombre);
+    setNombreTocado(true);
+    setErrorNombre(problemaNombre);
+    if (problemaNombre) {
+      document.getElementById("nombre-analisis")?.focus();
+      return;
+    }
     if (!archivo) {
+      setError("Seleccione una imagen JPG o PNG.");
       return;
     }
     setEnviando(true);
     try {
-      const creado = await crearAnalisis(nombre, archivo);
+      const creado = await crearAnalisis(nombre.trim(), archivo);
       navigate(`/analisis/${creado.id}/calibracion`);
     } catch (e) {
-      setError(mensajeDeError(e));
+      const mensaje = mensajeDeError(e);
+      // Si el servidor rechaza el nombre, el error se muestra en su campo.
+      if (/nombre/i.test(mensaje)) {
+        setErrorNombre(mensaje);
+      } else {
+        setError(mensaje);
+      }
       setEnviando(false);
     }
   };
@@ -91,16 +141,30 @@ export function NuevoAnalisis() {
 
             <div className="nuevo-analisis__campo-grupo">
               <label className="nuevo-analisis__etiqueta" htmlFor="nombre-analisis">
-                Identificador del análisis <span className="nuevo-analisis__opcional">(opcional)</span>
+                Identificador del análisis
               </label>
               <input
                 id="nombre-analisis"
-                className="nuevo-analisis__campo"
+                className={`nuevo-analisis__campo${errorNombre ? " nuevo-analisis__campo--error" : ""}`}
                 type="text"
                 placeholder="Ej.: Banco 3 – frente norte"
                 value={nombre}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNombre(e.target.value)}
+                maxLength={LONGITUD_MAXIMA_NOMBRE + 20}
+                aria-invalid={errorNombre !== ""}
+                aria-describedby="nombre-analisis-ayuda"
+                onChange={(e: ChangeEvent<HTMLInputElement>) => cambiarNombre(e.target.value)}
+                onBlur={() => {
+                  setNombreTocado(true);
+                  setErrorNombre(validarNombre(nombre));
+                }}
               />
+              <p
+                id="nombre-analisis-ayuda"
+                className={`nuevo-analisis__nota${errorNombre ? " nuevo-analisis__nota--error" : ""}`}
+                role={errorNombre ? "alert" : undefined}
+              >
+                {errorNombre || `Obligatorio, hasta ${LONGITUD_MAXIMA_NOMBRE} caracteres. Se propone el nombre del archivo.`}
+              </p>
             </div>
 
             <div
@@ -157,7 +221,7 @@ export function NuevoAnalisis() {
               <Boton variante="secundario" onClick={() => navigate("/")}>
                 Cancelar
               </Boton>
-              <Boton disabled={!archivo || enviando} onClick={() => void continuar()}>
+              <Boton disabled={!archivo || enviando || errorNombre !== ""} onClick={() => void continuar()}>
                 {enviando ? "Creando..." : "Continuar a calibración"}
                 {!enviando && <Icono nombre="siguiente" />}
               </Boton>

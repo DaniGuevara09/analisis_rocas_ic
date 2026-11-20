@@ -54,9 +54,21 @@
   font-weight: var(--peso-negrita);
 }
 
-.nuevo-analisis__opcional {
+.nuevo-analisis__nota {
+  margin: 0;
   color: var(--color-texto-secundario);
-  font-weight: var(--peso-normal);
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.nuevo-analisis__nota--error {
+  color: var(--color-error);
+  font-weight: var(--peso-negrita);
+}
+
+.nuevo-analisis__campo--error,
+.nuevo-analisis__campo--error:focus {
+  border-color: var(--color-error);
+  outline-color: var(--color-error);
 }
 
 .nuevo-analisis__campo {

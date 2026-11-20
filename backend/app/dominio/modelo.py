@@ -1,4 +1,5 @@
 """Entidades del dominio: Analisis, Calibracion, RegionExcluida, Fragmento, Poligono, Punto."""
+
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -47,6 +48,9 @@ __all__ = [
 
 FORMATOS_IMAGEN = ("JPG", "PNG")
 TOLERANCIA_AREA_PX = 1e-9
+# Área mínima de un fragmento: por debajo es un clic accidental, no una roca. Es el
+# mismo umbral con el que se descartan las máscaras diminutas del modelo.
+AREA_MINIMA_FRAGMENTO_PX2 = 20.0
 LONGITUD_MAXIMA_NOMBRE = 150
 
 
@@ -58,6 +62,15 @@ def _validar_nombre(nombre: str) -> str:
     if len(limpio) > LONGITUD_MAXIMA_NOMBRE:
         raise DatosNoValidos(f"El nombre no puede superar {LONGITUD_MAXIMA_NOMBRE} caracteres")
     return limpio
+
+
+def _validar_area_minima(poligono: "Poligono") -> None:
+    """Rechaza polígonos menores que AREA_MINIMA_FRAGMENTO_PX2 (clics accidentales)."""
+    if poligono.area() < AREA_MINIMA_FRAGMENTO_PX2:
+        raise PoligonoNoValido(
+            f"Fragmento demasiado pequeño ({poligono.area():.1f} px²); "
+            f"el mínimo es {AREA_MINIMA_FRAGMENTO_PX2:.0f} px²"
+        )
 
 
 class EstadoAnalisis(Enum):
@@ -280,6 +293,7 @@ class Analisis:
     def agregar_fragmento(self, poligono: Poligono) -> Fragmento:
         """Agrega un fragmento dibujado a mano; no puede caer en la región excluida."""
         self._exigir_calibracion()
+        _validar_area_minima(poligono)
         if self._en_region_excluida(poligono):
             raise FragmentoEnRegionExcluida("El fragmento cae en la region excluida")
         fragmento = Fragmento.crear(poligono, OrigenFragmento.MANUAL)
@@ -290,13 +304,14 @@ class Analisis:
     def reemplazar_fragmentos(self, fragmentos: Sequence[Fragmento]) -> None:
         """Reemplaza la lista completa por la editada por el operador (RF-05).
 
-        Valida todo antes de cambiar: ids únicos, vértices dentro de la imagen y
-        ningún centroide en la región excluida. Deja el estado en SEGMENTADO.
+        Valida todo antes de cambiar: ids únicos, área mínima, vértices dentro de la
+        imagen y ningún centroide en la región excluida. Deja el estado en SEGMENTADO.
         """
         self._exigir_calibracion()
         if len({f.id for f in fragmentos}) != len(fragmentos):
             raise DatosNoValidos("Hay fragmentos con el mismo id")
         for fragmento in fragmentos:
+            _validar_area_minima(fragmento.poligono)
             if not all(self._dentro_de_imagen(p) for p in fragmento.poligono.puntos):
                 raise PoligonoNoValido("Los fragmentos deben estar dentro de la imagen")
             if self._en_region_excluida(fragmento.poligono):
@@ -335,7 +350,7 @@ class Analisis:
             rangos=rangos,
             nombres_rangos=configuracion.nombres,
             colores_rangos=configuracion.colores,
-            histograma=granulometria.histograma(diametros),
+            histograma=granulometria.histograma(diametros, rangos),
             fragmentos=medidos,
         )
 

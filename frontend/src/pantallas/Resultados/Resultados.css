@@ -232,7 +232,29 @@
   text-align: left;
 }
 
-/* Informe PDF: "Exportar PDF" abre la impresión del navegador (Guardar como PDF). */
+/* Ficha técnica y tabla resumen: solo existen en el informe impreso. */
+.solo-imprimir {
+  display: none;
+}
+
+.resultados__tabla--ficha th {
+  width: 22%;
+  color: var(--color-texto-secundario);
+  font-weight: var(--peso-normal);
+}
+
+.resultados__tabla--resumen th,
+.resultados__tabla--resumen td {
+  text-align: center;
+}
+
+.resultados__tabla--resumen td {
+  font-size: var(--tamano-texto);
+  font-weight: var(--peso-negrita);
+}
+
+/* Informe PDF: "Informe PDF" abre la impresión del navegador (Guardar como PDF).
+   Plantilla de 1-2 páginas: ficha, resumen, gráficas, imagen con leyenda y supuestos. */
 @media print {
   @page {
     margin: var(--margen-impresion);
@@ -244,6 +266,17 @@
 
   .no-imprimir {
     display: none;
+  }
+
+  .solo-imprimir {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espacio-2);
+  }
+
+  .resultados__nota a {
+    color: inherit;
+    text-decoration: none;
   }
 
   .resultados__contenido {
@@ -266,7 +299,13 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .resultados__datos {
+  /* Sin la tarjeta de ayuda, la curva ocupa todo el ancho. */
+  .resultados__graficos--curva {
+    grid-template-columns: 1fr;
+  }
+
+  /* Página 2: imagen segmentada con leyenda y supuestos al pie. */
+  .resultados__fragmentos {
     break-before: page;
   }
 }

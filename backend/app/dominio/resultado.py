@@ -1,4 +1,5 @@
 """Objetos de valor del resultado granulométrico (se reexportan desde `modelo`)."""
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -21,8 +22,10 @@ class ResultadoGranulometrico:
     d80: float
     d90: float
     indice_n: float
+    tamano_caracteristico_mm: float  # x_c de Rosin-Rammler (63,2 % pasante)
     numero_fragmentos: int
     curva: tuple[PuntoCurva, ...]
+    curva_teorica: tuple[PuntoCurva, ...]  # Rosin-Rammler ajustada, para superponer
 
 
 @dataclass(frozen=True)
@@ -41,10 +44,10 @@ class RangoTamano:
 
 @dataclass(frozen=True)
 class ClaseHistograma:
-    """Clase del histograma: intervalo en mm, número de fragmentos y % retenido en masa."""
+    """Clase del histograma (un rango de tamaño): intervalo en mm, fragmentos y % en masa."""
 
     limite_inferior_mm: float
-    limite_superior_mm: float
+    limite_superior_mm: float | None
     numero_fragmentos: int
     porcentaje_retenido: float
 

@@ -1,4 +1,5 @@
 """Pruebas de los casos de uso de análisis con adaptadores falsos."""
+
 from uuid import uuid4
 
 import pytest

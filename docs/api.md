@@ -1,6 +1,6 @@
 # Contrato de la API
 
-Base: `/api`. Formato JSON salvo carga de imágenes (multipart) y exportación (CSV).
+Base: `/api`. Formato JSON salvo carga de imágenes (multipart) y exportación (CSV y XLSX).
 FastAPI publica la especificación en `/api/docs` (Swagger UI) y `/api/openapi.json`.
 
 Todas las rutas de este documento están implementadas.
@@ -56,8 +56,14 @@ Todas las rutas de este documento están implementadas.
 |---|---|
 | `GET /api/analisis/{id}/resultados` | `200` Resultados · `409 DATOS_INSUFICIENTES` (menos de 3 fragmentos) · `409 ESCALA_NO_CALIBRADA` |
 | `GET /api/analisis/{id}/resultados.csv` | `200 text/csv` (descarga `granulometria_<nombre>.csv`) · mismos errores que `/resultados` |
+| `GET /api/analisis/{id}/resultados.xlsx` | `200 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (descarga `granulometria_<nombre>.xlsx`) · mismos errores que `/resultados` |
 
-**Formato del CSV (RF-09, RNF-07):** UTF-8 con BOM, separador `;` y coma decimal (se abre directo en Excel en español). Bloques separados por una línea vacía: datos del análisis (nombre, fecha, imagen, factor mm/px, N), indicadores (D20–D90 en mm, n), supuestos, rangos (nombre, desde, hasta, color, fragmentos), curva (diámetro, % pasante) y una fila por fragmento (N, id, origen, área px², área mm², diámetro equivalente mm, rango).
+**Formato del CSV (RF-09):** CSV estándar (RFC 4180) en UTF-8 con BOM: separador `,` y punto decimal, una sola tabla con encabezado `numero,id,origen,area_px2,area_mm2,diametro_equivalente_mm,rango` y una fila por fragmento. Se procesa igual con cualquier script o configuración regional.
+
+**Formato del XLSX (RF-09, RNF-07):** informe para Excel, con los números guardados como números (se ve bien en cualquier idioma de Excel). Hojas:
+- `Resumen`: nombre, fecha, resolución, longitud del objeto de referencia (mm), escala (mm/px), N; indicadores D20–D90, x_c y n; rangos (nombre, desde, hasta, color, fragmentos, % en masa); supuestos y limitaciones.
+- `Curva`: diámetro (mm), % pasante medido y % pasante de Rosin-Rammler.
+- `Fragmentos`: N.º, id, origen, área px², área mm², diámetro equivalente (mm), rango.
 
 ### Configuración de rangos — RF-14
 | Método y ruta | Entrada | Salida |
@@ -83,10 +89,12 @@ AnalisisDetalle  AnalisisResumen + {
                  }
 Fragmento        { id: uuid, poligono: Punto[], origen: "MODELO"|"MANUAL", diametro_equivalente_mm: float | null }
 FragmentoSolicitud { id?: uuid (omitir si es nuevo), poligono: Punto[], origen: "MODELO"|"MANUAL" (por defecto "MANUAL") }
-Resultados       { d20, d50, d60, d80, d90: float (mm), indice_n: float, numero_fragmentos: int,
+Resultados       { d20, d50, d60, d80, d90: float (mm), indice_n: float,
+                   tamano_caracteristico_mm: float (x_c de Rosin-Rammler), numero_fragmentos: int,
                    curva: { diametro_mm, pasante_pct }[],
+                   curva_teorica: { diametro_mm, pasante_pct }[] (Rosin-Rammler ajustada),
                    rangos: { indice, nombre, color: "#rrggbb", limite_inferior_mm, limite_superior_mm | null }[],
-                   histograma: { limite_inferior_mm, limite_superior_mm, numero_fragmentos, porcentaje_retenido }[],
+                   histograma: { limite_inferior_mm, limite_superior_mm | null, numero_fragmentos, porcentaje_retenido }[] (uno por rango, mismo orden),
                    fragmentos: { id, diametro_equivalente_mm, indice_rango }[],
                    supuestos: str[] }
 ConfiguracionRangos { modo: "RELATIVO" (cortes en % pasante, 0–100) | "ABSOLUTO" (cortes en mm),

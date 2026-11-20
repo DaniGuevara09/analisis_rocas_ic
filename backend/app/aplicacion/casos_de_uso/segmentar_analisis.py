@@ -1,4 +1,5 @@
 """Caso de uso: segmentar automáticamente la imagen de un análisis (HU-04)."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import AlmacenImagenes, RepositorioAnalisis, Segmentador

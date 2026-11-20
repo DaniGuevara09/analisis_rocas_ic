@@ -22,5 +22,7 @@ Cada tarea la redacta el tech lead, la implementa Claude Code y se cierra con un
 
 | T-009 | Exportación CSV (RF-09), configuración de rangos y colores (RF-14), despliegue sin `.env` (RNF-06) y espacio para el modelo | T-008 | Implementada, pendiente de revisión |
 | T-010 | Rediseño de la interfaz (uso docente y profesional): tema, encabezado, etapas, iconos, zoom del editor, definiciones de indicadores | T-009 | Implementada, pendiente de revisión |
+| T-011 | Correcciones del informe: ajuste de Rosin-Rammler (10–90 %) y x_c, curva teórica, histograma por rangos, área mínima, rangos por defecto en mm, Excel + CSV estándar, plantilla PDF | T-010 | Implementada, pendiente de revisión |
+| T-012 | Usabilidad: recalibrar, unidades y objetos de referencia, exclusión guardada al cerrar, corte libre, quitar punto, aviso de espera, nombre obligatorio; se quita el control de calidad | T-011 | Implementada, pendiente de revisión |
 
 Pendiente: RF-13 (usuarios y roles, complementario).

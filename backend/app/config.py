@@ -1,4 +1,5 @@
 """Configuración por variables de entorno."""
+
 from typing import Literal
 
 from pydantic import model_validator
@@ -42,9 +43,7 @@ class Configuracion(BaseSettings):
                 if not getattr(self, nombre)
             ]
             if faltantes:
-                raise ValueError(
-                    "ALMACEN_IMAGENES=s3 requiere definir: " + ", ".join(faltantes)
-                )
+                raise ValueError("ALMACEN_IMAGENES=s3 requiere definir: " + ", ".join(faltantes))
         return self
 
 

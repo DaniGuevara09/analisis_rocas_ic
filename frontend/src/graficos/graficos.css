@@ -45,6 +45,36 @@
   stroke-linejoin: round;
 }
 
+.grafico__linea--teorica {
+  stroke: var(--color-texto-secundario);
+  stroke-dasharray: var(--trazo-punteado);
+}
+
+.grafico__leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espacio-1) var(--espacio-4);
+  margin-top: var(--espacio-1);
+  color: var(--color-texto-secundario);
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.grafico__serie {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.grafico__muestra {
+  width: var(--espacio-5);
+  border-top: var(--grafico-grosor-linea) solid var(--color-serie);
+}
+
+.grafico__muestra--teorica {
+  border-top-style: dashed;
+  border-top-color: var(--color-texto-secundario);
+}
+
 .grafico__referencia {
   stroke: var(--color-referencia);
   stroke-width: var(--borde-grosor);
@@ -68,6 +98,22 @@
 
 .grafico__barra--activa {
   fill: var(--color-acento);
+}
+
+/* Barras por rango: el color viene de la configuración (dato de la API). */
+.grafico__barra--rango {
+  stroke: var(--color-borde-fuerte);
+  stroke-width: var(--borde-grosor);
+}
+
+.grafico__barra--rango.grafico__barra--activa {
+  stroke: var(--color-texto);
+  stroke-width: var(--borde-grosor-enfasis);
+}
+
+.grafico__marca--fuerte {
+  fill: var(--color-texto);
+  font-weight: var(--peso-negrita);
 }
 
 .grafico__zona {

@@ -1,4 +1,5 @@
 """Casos de uso de la configuración de rangos de tamaño y colores (RF-14)."""
+
 from collections.abc import Sequence
 
 from app.aplicacion.puertos import RepositorioConfiguracion

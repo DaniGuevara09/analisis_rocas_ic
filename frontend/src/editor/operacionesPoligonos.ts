@@ -10,6 +10,16 @@ import type { Punto } from "../api/tipos";
 const LARGO_CORTE = 1e6;
 /** Pedazos más pequeños que esto (px²) se descartan como ruido numérico. */
 const AREA_MINIMA_PX = 1;
+/**
+ * Área mínima de un fragmento (px²). La API rechaza los menores (son clics accidentales);
+ * el editor usa el mismo valor para avisar antes de guardar.
+ */
+export const AREA_MINIMA_FRAGMENTO_PX2 = 20;
+
+/** Indica si un contorno es demasiado pequeño para ser un fragmento. */
+export function esDiminuto(puntos: Punto[]): boolean {
+  return areaPoligono(puntos) < AREA_MINIMA_FRAGMENTO_PX2;
+}
 
 function aAnillo(puntos: Punto[]): Pair[] {
   return puntos.map((p) => [p.x, p.y]);
@@ -83,6 +93,56 @@ export function dividirPoligono(poligono: Punto[], a: Punto, b: Punto): Punto[][
   const piezas = [
     ...exteriores(polygonClipping.intersection(sujeto, semiplano(a, b, 1))),
     ...exteriores(polygonClipping.intersection(sujeto, semiplano(a, b, -1))),
+  ];
+  return piezas.length >= 2 ? piezas : null;
+}
+
+function unitario(desde: Punto, hasta: Punto): Punto {
+  const largo = Math.hypot(hasta.x - desde.x, hasta.y - desde.y);
+  return { x: (hasta.x - desde.x) / largo, y: (hasta.y - desde.y) / largo };
+}
+
+/**
+ * Lado de una línea quebrada: la línea prolongada por sus dos extremos y cerrada con
+ * dos puntos lejanos hacia un mismo lado. Es un polígono enorme cuyo borde es el trazo.
+ */
+function ladoDeTrazo(trazo: Punto[]): Polygon {
+  const primero = trazo[0];
+  const ultimo = trazo[trazo.length - 1];
+  const u0 = unitario(trazo[1], primero);
+  const un = unitario(trazo[trazo.length - 2], ultimo);
+  const inicio = { x: primero.x + u0.x * LARGO_CORTE, y: primero.y + u0.y * LARGO_CORTE };
+  const fin = { x: ultimo.x + un.x * LARGO_CORTE, y: ultimo.y + un.y * LARGO_CORTE };
+  const cuerda = unitario(inicio, fin);
+  const normal = { x: -cuerda.y * LARGO_CORTE, y: cuerda.x * LARGO_CORTE };
+  const anillo: Pair[] = [
+    [inicio.x, inicio.y],
+    ...aAnillo(trazo),
+    [fin.x, fin.y],
+    [fin.x + normal.x, fin.y + normal.y],
+    [inicio.x + normal.x, inicio.y + normal.y],
+  ];
+  return [anillo];
+}
+
+/**
+ * Divide un fragmento con una línea quebrada de 2 o más puntos (los extremos se prolongan).
+ * Sirve para cortes que siguen una grieta irregular. Devuelve las piezas (2 o más) o null
+ * si el trazo no atraviesa el fragmento.
+ */
+export function dividirConTrazo(poligono: Punto[], trazo: Punto[]): Punto[][] | null {
+  const puntos = trazo.filter((p, i) => i === 0 || !cercaDe(p, trazo[i - 1], 0));
+  if (puntos.length < 2) {
+    return null;
+  }
+  if (puntos.length === 2) {
+    return dividirPoligono(poligono, puntos[0], puntos[1]);
+  }
+  const sujeto: Polygon = [aAnillo(poligono)];
+  const lado = ladoDeTrazo(puntos);
+  const piezas = [
+    ...exteriores(polygonClipping.intersection(sujeto, lado)),
+    ...exteriores(polygonClipping.difference(sujeto, lado)),
   ];
   return piezas.length >= 2 ? piezas : null;
 }

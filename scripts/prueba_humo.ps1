@@ -109,16 +109,24 @@ try {
     $r = Invoke-Api "GET" "/analisis/$id/resultados"
     $res = $r.Cuerpo | ConvertFrom-Json
     $orden = $res.d20 -le $res.d50 -and $res.d50 -le $res.d60 -and $res.d60 -le $res.d80 -and $res.d80 -le $res.d90
-    Write-Paso "GET /resultados" ($r.Codigo -eq 200 -and $orden -and $res.rangos.Count -ge 2) `
-        ("(D50={0:N1} mm, D80={1:N1} mm, n={2:N2}, {3} rangos)" -f $res.d50, $res.d80, $res.indice_n, $res.rangos.Count)
+    $okRes = $r.Codigo -eq 200 -and $orden -and $res.rangos.Count -ge 2 -and $res.tamano_caracteristico_mm -gt 0 `
+        -and $res.histograma.Count -eq $res.rangos.Count -and $res.curva_teorica.Count -gt 1
+    Write-Paso "GET /resultados" $okRes `
+        ("(D50={0:N1} mm, D80={1:N1} mm, xc={2:N1} mm, n={3:N2}, {4} rangos)" -f $res.d50, $res.d80, $res.tamano_caracteristico_mm, $res.indice_n, $res.rangos.Count)
 
-    # 9. CSV (RF-09, RNF-07)
+    # 9. CSV estandar: una tabla, una fila por fragmento (RF-09)
     $csv = Join-Path $temporal "resultados.csv"
     $r = Invoke-Api "GET" "/analisis/$id/resultados.csv"
     Copy-Item (Join-Path $temporal "respuesta.txt") $csv
-    $lineas = Get-Content $csv -Encoding UTF8
-    $okCsv = $r.Codigo -eq 200 -and ($lineas[0] -like "*Informe granulometrico;prueba-humo") -and ($lineas -match "^D50 \(mm\);").Count -eq 1
+    $lineas = @(Get-Content $csv -Encoding UTF8)
+    $okCsv = $r.Codigo -eq 200 -and ($lineas[0] -like "*numero,id,origen,area_px2,area_mm2,diametro_equivalente_mm,rango") -and $lineas.Count -eq 5
     Write-Paso "GET /resultados.csv" $okCsv "($($lineas.Count) lineas)"
+
+    # 9b. Informe Excel (RF-09, RNF-07): un .xlsx es un ZIP, empieza por "PK"
+    $r = Invoke-Api "GET" "/analisis/$id/resultados.xlsx"
+    $bytes = [System.IO.File]::ReadAllBytes((Join-Path $temporal "respuesta.txt"))
+    $okXlsx = $r.Codigo -eq 200 -and $bytes.Length -gt 100 -and $bytes[0] -eq 0x50 -and $bytes[1] -eq 0x4B
+    Write-Paso "GET /resultados.xlsx" $okXlsx "($($bytes.Length) bytes)"
 
     # 10. Reanudar (RF-10): el detalle conserva calibracion, region y poligonos
     $r = Invoke-Api "GET" "/analisis/$id"

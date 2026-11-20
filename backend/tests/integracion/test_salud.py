@@ -1,4 +1,5 @@
 """Prueba de la ruta de salud."""
+
 from fastapi.testclient import TestClient
 
 from app.adaptadores.salida.segmentacion.no_disponible import SegmentadorNoDisponible

@@ -153,6 +153,15 @@ def test_editar_fragmento_en_region_excluida_devuelve_422(
     assert respuesta.status_code == 422
 
 
+def test_put_fragmentos_con_poligono_diminuto_devuelve_422(
+    cliente: TestClient, id_calibrado: str
+) -> None:
+    cuerpo = {"fragmentos": [{"poligono": cuadrado(50, 50, 2)}]}  # 4 px²: clic accidental
+    respuesta = cliente.put(f"/api/analisis/{id_calibrado}/fragmentos", json=cuerpo)
+    assert respuesta.status_code == 422
+    assert "20 px" in respuesta.json()["detalle"]
+
+
 # --- GET /resultados ----------------------------------------------------------
 def test_resultados_devuelve_indicadores_rangos_e_histograma(
     cliente: TestClient, id_calibrado: str
@@ -167,6 +176,9 @@ def test_resultados_devuelve_indicadores_rangos_e_histograma(
     assert [r["indice"] for r in datos["rangos"]] == [0, 1, 2, 3, 4]
     assert datos["rangos"][-1]["limite_superior_mm"] is None
     assert sum(c["numero_fragmentos"] for c in datos["histograma"]) == 3
+    assert len(datos["histograma"]) == len(datos["rangos"])  # una barra por rango
+    assert datos["tamano_caracteristico_mm"] > 0
+    assert len(datos["curva_teorica"]) > len(datos["curva"])
     assert len(datos["fragmentos"]) == 3
     assert any("esf" in s for s in datos["supuestos"])
 

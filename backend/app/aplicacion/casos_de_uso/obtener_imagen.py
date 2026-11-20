@@ -1,4 +1,5 @@
 """Caso de uso: obtener el archivo de imagen de un análisis."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import AlmacenImagenes, RepositorioAnalisis

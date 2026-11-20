@@ -1,4 +1,5 @@
 """Caso de uso: obtener un análisis por id."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import RepositorioAnalisis

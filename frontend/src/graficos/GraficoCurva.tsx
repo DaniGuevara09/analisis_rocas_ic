@@ -18,21 +18,25 @@ export interface Referencia {
 
 interface Props {
   curva: PuntoCurva[];
+  /** Curva de Rosin-Rammler ajustada (calculada en la API), en línea punteada. */
+  curvaTeorica?: PuntoCurva[];
   /** Puntos a señalar con guías y etiqueta directa (p. ej. D50 y D80). */
   referencias: Referencia[];
 }
 
 /** Curva granulométrica: % pasante acumulado contra tamaño (eje x logarítmico). */
-export function GraficoCurva({ curva, referencias }: Props) {
+export function GraficoCurva({ curva, curvaTeorica = [], referencias }: Props) {
   const [activo, setActivo] = useState<number | null>(null);
   const diametros = curva.map((p) => p.diametro_mm);
   const dominio = dominioLog(Math.min(...diametros), Math.max(...diametros));
   const x = escalaLog(dominio, [MARGEN.izquierda, ANCHO - MARGEN.derecha]);
   const y = escalaLineal([0, 100], [ALTO - MARGEN.abajo, MARGEN.arriba]);
 
-  const trazo = curva
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.diametro_mm).toFixed(1)},${y(p.pasante_pct).toFixed(1)}`)
-    .join(" ");
+  const trazar = (puntos: PuntoCurva[]) =>
+    puntos
+      .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.diametro_mm).toFixed(1)},${y(p.pasante_pct).toFixed(1)}`)
+      .join(" ");
+  const trazo = trazar(curva);
 
   const alMover = (evento: MouseEvent<SVGRectElement>) => {
     const caja = evento.currentTarget.ownerSVGElement?.getBoundingClientRect();
@@ -91,6 +95,7 @@ export function GraficoCurva({ curva, referencias }: Props) {
           </g>
         ))}
 
+        {curvaTeorica.length > 1 && <path className="grafico__linea grafico__linea--teorica" d={trazar(curvaTeorica)} />}
         <path className="grafico__linea" d={trazo} />
 
         {punto && (
@@ -109,6 +114,18 @@ export function GraficoCurva({ curva, referencias }: Props) {
           onMouseLeave={() => setActivo(null)}
         />
       </svg>
+      {curvaTeorica.length > 1 && (
+        <figcaption className="grafico__leyenda">
+          <span className="grafico__serie">
+            <span className="grafico__muestra" aria-hidden="true" />
+            Medida (fragmentos)
+          </span>
+          <span className="grafico__serie">
+            <span className="grafico__muestra grafico__muestra--teorica" aria-hidden="true" />
+            Rosin-Rammler ajustada
+          </span>
+        </figcaption>
+      )}
       {punto && (
         <div
           className="grafico__tooltip"

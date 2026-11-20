@@ -23,11 +23,27 @@ def config(
     return ConfiguracionRangos(modo=modo, cortes=cortes, nombres=nombres, colores=colores)
 
 
-def test_por_defecto_son_cinco_rangos_relativos_a_d20_d50_d80_d90() -> None:
-    assert CONFIGURACION_POR_DEFECTO.modo is ModoRangos.RELATIVO
-    assert CONFIGURACION_POR_DEFECTO.cortes == (20.0, 50.0, 80.0, 90.0)
-    assert len(CONFIGURACION_POR_DEFECTO.colores) == 5
-    assert len(CONFIGURACION_POR_DEFECTO.nombres) == 5
+def test_por_defecto_son_cinco_rangos_en_mm_fijos() -> None:
+    # Límites fijos: "Finos" significa lo mismo en todas las fotos.
+    assert CONFIGURACION_POR_DEFECTO.modo is ModoRangos.ABSOLUTO
+    assert CONFIGURACION_POR_DEFECTO.cortes == (50.0, 150.0, 400.0, 800.0)
+    assert CONFIGURACION_POR_DEFECTO.nombres[0] == "Finos"
+    assert CONFIGURACION_POR_DEFECTO.nombres[-1] == "Sobretamaño"
+
+
+def test_colores_por_defecto_son_de_tonos_distintos() -> None:
+    # Escala de alto contraste (celeste, verde, amarillo, naranja, rojo), no 5 azules.
+    colores = CONFIGURACION_POR_DEFECTO.colores
+    assert len(set(colores)) == 5
+    tonos = [_tono(c) for c in colores]
+    assert all(abs(a - b) >= 20 for a, b in zip(tonos, tonos[1:], strict=False))
+
+
+def _tono(color: str) -> float:
+    import colorsys
+
+    r, g_, b = (int(color[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    return colorsys.rgb_to_hsv(r, g_, b)[0] * 360
 
 
 def test_rangos_absolutos_usan_los_cortes_en_mm() -> None:
@@ -47,9 +63,15 @@ def test_rangos_relativos_usan_los_percentiles_de_la_curva() -> None:
     assert rangos[2] == RangoTamano(g.percentil_dx(curva, 80.0), None)
 
 
-def test_configuracion_por_defecto_coincide_con_rangos_por_defecto() -> None:
+def test_configuracion_relativa_d20_d50_d80_d90_coincide_con_rangos_relativos() -> None:
     resultado = g.calcular([5.0, 12.0, 20.0, 33.0, 50.0, 71.0])
-    assert CONFIGURACION_POR_DEFECTO.rangos(resultado.curva) == g.rangos_por_defecto(resultado)
+    relativa = config(
+        modo=ModoRangos.RELATIVO,
+        cortes=(20.0, 50.0, 80.0, 90.0),
+        nombres=("a", "b", "c", "d", "e"),
+        colores=CONFIGURACION_POR_DEFECTO.colores,
+    )
+    assert relativa.rangos(resultado.curva) == g.rangos_por_defecto(resultado)
 
 
 @pytest.mark.parametrize(

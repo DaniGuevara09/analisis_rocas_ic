@@ -1,4 +1,5 @@
 """Repositorio de análisis sobre PostgreSQL."""
+
 from uuid import UUID
 
 from sqlalchemy import Engine, delete, select

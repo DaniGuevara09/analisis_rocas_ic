@@ -1,4 +1,5 @@
 """Caso de uso: calibrar la escala de un análisis."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import RepositorioAnalisis

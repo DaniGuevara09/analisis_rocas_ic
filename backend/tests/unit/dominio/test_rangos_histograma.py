@@ -9,7 +9,16 @@ from app.dominio.resultado import RangoTamano, ResultadoGranulometrico
 
 def resultado(d20: float, d50: float, d80: float, d90: float) -> ResultadoGranulometrico:
     return ResultadoGranulometrico(
-        d20=d20, d50=d50, d60=d50, d80=d80, d90=d90, indice_n=1.0, numero_fragmentos=3, curva=()
+        d20=d20,
+        d50=d50,
+        d60=d50,
+        d80=d80,
+        d90=d90,
+        indice_n=1.0,
+        tamano_caracteristico_mm=d50,
+        numero_fragmentos=3,
+        curva=(),
+        curva_teorica=(),
     )
 
 
@@ -50,47 +59,39 @@ def test_indice_rango_con_dx_iguales_usa_el_ultimo_rango_valido() -> None:
     assert g.indice_rango(9, rangos) == 0
 
 
-# --- Histograma -------------------------------------------------------------
-def test_histograma_dos_clases_cuenta_y_pondera_por_volumen() -> None:
-    clases = g.histograma([1.0, 2.0, 3.0, 4.0], numero_clases=2)
-    assert len(clases) == 2
-    assert (clases[0].limite_inferior_mm, clases[0].limite_superior_mm) == (1.0, 2.5)
-    assert (clases[1].limite_inferior_mm, clases[1].limite_superior_mm) == (2.5, 4.0)
-    assert [c.numero_fragmentos for c in clases] == [2, 2]
+# --- Histograma por rangos -----------------------------------------------
+RANGOS = (RangoTamano(0.0, 2.5), RangoTamano(2.5, 5.0), RangoTamano(5.0, None))
+
+
+def test_histograma_tiene_una_clase_por_rango_con_sus_limites() -> None:
+    clases = g.histograma([1.0, 2.0, 3.0, 4.0], RANGOS)
+    assert [(c.limite_inferior_mm, c.limite_superior_mm) for c in clases] == [
+        (0.0, 2.5),
+        (2.5, 5.0),
+        (5.0, None),
+    ]
+
+
+def test_histograma_cuenta_y_pondera_por_volumen() -> None:
+    clases = g.histograma([1.0, 2.0, 3.0, 4.0], RANGOS)
+    assert [c.numero_fragmentos for c in clases] == [2, 2, 0]
     # pesos d³: 1 + 8 = 9 y 27 + 64 = 91, total 100
     assert clases[0].porcentaje_retenido == pytest.approx(9.0)
     assert clases[1].porcentaje_retenido == pytest.approx(91.0)
+    assert clases[2].porcentaje_retenido == 0.0
 
 
-def test_histograma_el_maximo_cae_en_la_ultima_clase() -> None:
-    clases = g.histograma([1.0, 10.0], numero_clases=3)
-    assert [c.numero_fragmentos for c in clases] == [1, 0, 1]
-
-
-def test_histograma_numero_de_clases_por_sturges() -> None:
-    # n = 8 -> ceil(log2(8)) + 1 = 4
-    clases = g.histograma([float(i) for i in range(1, 9)])
-    assert len(clases) == 4
-
-
-def test_histograma_limita_el_numero_de_clases() -> None:
-    clases = g.histograma([float(i) for i in range(1, 100_001)])
-    assert len(clases) == g.MAXIMO_CLASES_HISTOGRAMA
-
-
-def test_histograma_con_diametros_iguales_tiene_una_clase() -> None:
-    clases = g.histograma([5.0, 5.0, 5.0])
-    assert len(clases) == 1
-    assert clases[0].numero_fragmentos == 3
-    assert clases[0].porcentaje_retenido == pytest.approx(100.0)
+def test_histograma_ultimo_rango_abierto_recibe_los_mayores() -> None:
+    clases = g.histograma([1.0, 5.0, 1000.0], RANGOS)
+    assert [c.numero_fragmentos for c in clases] == [1, 0, 2]
 
 
 def test_histograma_vacio_lanza_datos_insuficientes() -> None:
     with pytest.raises(DatosInsuficientes):
-        g.histograma([])
+        g.histograma([], RANGOS)
 
 
 def test_histograma_los_porcentajes_suman_100() -> None:
-    clases = g.histograma([1.0, 1.5, 2.2, 3.7, 8.1, 9.9, 12.0])
+    clases = g.histograma([1.0, 1.5, 2.2, 3.7, 8.1, 9.9, 12.0], RANGOS)
     assert sum(c.porcentaje_retenido for c in clases) == pytest.approx(100.0)
     assert sum(c.numero_fragmentos for c in clases) == 7

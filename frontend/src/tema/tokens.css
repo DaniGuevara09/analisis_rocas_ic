@@ -47,7 +47,7 @@
   --color-fragmento-seleccionado: #E8590C;
   --color-trazo-division: #E8590C;
   --color-trazo-dibujo: #00BFA5;
-  --alfa-relleno-fragmento: 0.3;
+  --alfa-relleno-fragmento: 0.45;
   --alfa-relleno-seleccionado: 0.5;
 
   /* Los colores de cada rango de tamaño vienen de la configuración (API, RF-14).
@@ -89,6 +89,7 @@
   --radio-control: 6px;
   --radio-pildora: 999px;
   --radio-redondo: 50%;
+  --duracion-giro: 0.8s;
 
   /* Bordes */
   --borde-grosor: 1px;

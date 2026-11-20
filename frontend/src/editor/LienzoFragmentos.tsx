@@ -30,6 +30,8 @@ interface Props {
   /** Vértices del fragmento que se dibuja o extremos de la línea de división (px de la imagen). */
   trazo: Punto[];
   mostrarContornos: boolean;
+  /** Si no es null, cubre el lienzo con un aviso de espera (guardando, segmentando). */
+  mensajeEspera?: string | null;
   /** Texto de la etiqueta flotante al pasar el ratón sobre un fragmento. */
   etiquetaFragmento: (id: string) => string;
   onClicFragmento: (id: string, aditivo: boolean) => void;
@@ -61,6 +63,7 @@ export function LienzoFragmentos({
   herramienta,
   trazo,
   mostrarContornos,
+  mensajeEspera = null,
   etiquetaFragmento,
   onClicFragmento,
   onClicImagen,
@@ -281,6 +284,12 @@ export function LienzoFragmentos({
             <Icono nombre="ajustar" />
             Ajustar
           </button>
+        </div>
+      )}
+      {mensajeEspera && (
+        <div className="lienzo-fragmentos__espera" role="status" aria-live="polite">
+          <span className="lienzo-fragmentos__indicador" aria-hidden="true" />
+          {mensajeEspera}
         </div>
       )}
       {etiqueta && !editando && (

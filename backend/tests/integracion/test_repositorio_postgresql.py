@@ -1,4 +1,5 @@
 """Pruebas del repositorio contra PostgreSQL real (requiere TEST_DATABASE_URL)."""
+
 import os
 from collections.abc import Iterator
 from uuid import uuid4

@@ -20,11 +20,14 @@ from app.adaptadores.entrada.api.esquemas import (
     a_resultados,
 )
 from app.adaptadores.entrada.api.exportacion_csv import generar_csv
+from app.adaptadores.entrada.api.exportacion_xlsx import generar_xlsx
 from app.aplicacion.casos_de_uso.editar_fragmentos import EditarFragmentos, FragmentoEditado
 from app.aplicacion.casos_de_uso.obtener_analisis import ObtenerAnalisis
 from app.aplicacion.casos_de_uso.obtener_resultados import ObtenerResultados
 from app.aplicacion.casos_de_uso.segmentar_analisis import SegmentarAnalisis
 from app.dominio.modelo import OrigenFragmento, Punto
+
+BOM_UTF8 = "\ufeff"  # marca de orden de bytes: Excel detecta UTF-8 por ella
 
 router = APIRouter(prefix="/analisis/{id}")
 
@@ -69,16 +72,33 @@ def resultados(
     return a_resultados(caso.ejecutar(id))
 
 
+def _descarga(contenido: bytes, tipo: str, nombre_archivo: str) -> Response:
+    archivo = quote(nombre_archivo)
+    return Response(
+        content=contenido,
+        media_type=tipo,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{archivo}"},
+    )
+
+
 @router.get("/resultados.csv")
 def resultados_csv(
     id: UUID, caso: Annotated[ObtenerResultados, Depends(caso_resultados)]
 ) -> Response:
-    """Descarga el CSV con indicadores, supuestos, rangos y el tamaño de cada fragmento."""
+    """CSV estándar ("," y punto decimal) con una fila por fragmento."""
     analisis, reporte = caso.ejecutar_con_analisis(id)
-    contenido = "\ufeff" + generar_csv(analisis, reporte)
-    archivo = quote(f"granulometria_{analisis.nombre}.csv")
-    return Response(
-        content=contenido.encode("utf-8"),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{archivo}"},
+    contenido = (BOM_UTF8 + generar_csv(analisis, reporte)).encode("utf-8")
+    return _descarga(contenido, "text/csv; charset=utf-8", f"granulometria_{analisis.nombre}.csv")
+
+
+@router.get("/resultados.xlsx")
+def resultados_xlsx(
+    id: UUID, caso: Annotated[ObtenerResultados, Depends(caso_resultados)]
+) -> Response:
+    """Informe Excel: hojas Resumen (indicadores y supuestos), Curva y Fragmentos."""
+    analisis, reporte = caso.ejecutar_con_analisis(id)
+    return _descarga(
+        generar_xlsx(analisis, reporte),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        f"granulometria_{analisis.nombre}.xlsx",
     )

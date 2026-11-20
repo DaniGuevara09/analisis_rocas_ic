@@ -74,9 +74,10 @@ export interface RangoTamano {
   limite_superior_mm: number | null;
 }
 
+/** Una clase por rango de tamaño (mismo índice que `rangos`); sin límite superior la última. */
 export interface ClaseHistograma {
   limite_inferior_mm: number;
-  limite_superior_mm: number;
+  limite_superior_mm: number | null;
   numero_fragmentos: number;
   porcentaje_retenido: number;
 }
@@ -95,8 +96,12 @@ export interface Resultados {
   d80: number;
   d90: number;
   indice_n: number;
+  /** x_c de Rosin-Rammler: tamaño con 63,2 % pasante. */
+  tamano_caracteristico_mm: number;
   numero_fragmentos: number;
   curva: PuntoCurva[];
+  /** Curva de Rosin-Rammler ajustada, para superponer a la medida. */
+  curva_teorica: PuntoCurva[];
   rangos: RangoTamano[];
   histograma: ClaseHistograma[];
   fragmentos: FragmentoMedido[];

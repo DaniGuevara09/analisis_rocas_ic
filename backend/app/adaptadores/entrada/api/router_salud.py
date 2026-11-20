@@ -1,4 +1,5 @@
 """Ruta de salud: estado del servicio y disponibilidad del modelo de IA."""
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 

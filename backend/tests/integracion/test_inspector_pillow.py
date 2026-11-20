@@ -1,4 +1,5 @@
 """Pruebas del inspector de imágenes con imágenes generadas con Pillow."""
+
 from io import BytesIO
 
 import pytest

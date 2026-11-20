@@ -1,4 +1,5 @@
 """Caso de uso: guardar la lista de fragmentos editada por el operador (HU-05, HU-06)."""
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID

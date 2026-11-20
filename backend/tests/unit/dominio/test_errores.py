@@ -1,4 +1,5 @@
 """Las excepciones de dominio comparten una clase base."""
+
 import pytest
 
 from app.dominio import errores

@@ -92,6 +92,29 @@ def test_reemplazar_fragmentos_con_vertice_fuera_de_la_imagen_lanza_error() -> N
 
 
 # --- generar_reporte --------------------------------------------------------
+def test_reemplazar_fragmentos_rechaza_poligonos_diminutos_y_no_cambia() -> None:
+    # Un clic accidental produce polígonos de 1 a 5 px²: se rechazan (mínimo 20 px²).
+    analisis = analisis_calibrado()
+    previo = analisis.registrar_fragmentos([cuadrado(0, 0, 10)], OrigenFragmento.MODELO)
+    diminuto = manual(cuadrado(100, 100, 2))  # 4 px²
+    with pytest.raises(PoligonoNoValido, match="20 px"):
+        analisis.reemplazar_fragmentos([*previo, diminuto])
+    assert analisis.fragmentos == previo
+
+
+def test_reemplazar_fragmentos_acepta_el_area_minima_exacta() -> None:
+    analisis = analisis_calibrado()
+    justo = manual(Poligono((Punto(0, 0), Punto(10, 0), Punto(10, 2), Punto(0, 2))))  # 20 px²
+    analisis.reemplazar_fragmentos([justo])
+    assert analisis.fragmentos == [justo]
+
+
+def test_agregar_fragmento_diminuto_lanza_error() -> None:
+    analisis = analisis_calibrado()
+    with pytest.raises(PoligonoNoValido):
+        analisis.agregar_fragmento(cuadrado(0, 0, 3))
+
+
 def test_generar_reporte_clasifica_cada_fragmento() -> None:
     analisis = analisis_calibrado()
     fragmentos = analisis.registrar_fragmentos(

@@ -1,4 +1,5 @@
 """Rutas de calibración y región excluida (docs/api.md)."""
+
 from typing import Annotated
 from uuid import UUID
 

@@ -1,5 +1,6 @@
 """Puertos: Segmentador, RepositorioAnalisis, RepositorioConfiguracion, AlmacenImagenes e
 InspectorImagenes."""
+
 from typing import Protocol
 from uuid import UUID
 

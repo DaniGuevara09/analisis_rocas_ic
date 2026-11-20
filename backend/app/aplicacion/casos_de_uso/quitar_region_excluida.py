@@ -1,4 +1,5 @@
 """Caso de uso: quitar la región excluida."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import RepositorioAnalisis

@@ -2,6 +2,7 @@
 
 Con `IMAGEN_PRUEBA_SEGMENTACION=<ruta a una foto real>` además exige al menos un polígono.
 """
+
 import importlib.util
 import io
 import os

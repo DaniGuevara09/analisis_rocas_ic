@@ -1,4 +1,5 @@
 """Pruebas de la composición del almacén según la configuración."""
+
 import pytest
 from pydantic import ValidationError
 

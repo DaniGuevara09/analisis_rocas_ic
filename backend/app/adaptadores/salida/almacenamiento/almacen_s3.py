@@ -1,4 +1,5 @@
 """Almacén de imágenes en un bucket compatible con S3 (Cloudflare R2)."""
+
 import re
 from typing import Any
 from uuid import uuid4

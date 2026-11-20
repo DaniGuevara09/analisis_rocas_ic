@@ -1,4 +1,5 @@
 """Adaptadores falsos en memoria para probar los casos de uso."""
+
 from uuid import UUID
 
 from app.dominio.configuracion import ConfiguracionRangos

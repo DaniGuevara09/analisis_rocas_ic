@@ -4,11 +4,11 @@ import math
 from collections.abc import Iterable, Sequence
 
 from app.dominio.errores import PoligonoNoValido
-from app.dominio.modelo import Poligono, Punto
+from app.dominio.modelo import AREA_MINIMA_FRAGMENTO_PX2, Poligono, Punto
 
 Par = tuple[float, float]
 
-AREA_MINIMA_PX = 20.0
+AREA_MINIMA_PX = AREA_MINIMA_FRAGMENTO_PX2
 TOLERANCIA_PX = 1.0
 
 

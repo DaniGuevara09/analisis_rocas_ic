@@ -1,4 +1,5 @@
 """Segmentador que se usa cuando el modelo no se pudo cargar (por ejemplo, falta best.pt)."""
+
 from app.aplicacion.errores import ModeloNoDisponible
 from app.dominio.modelo import Poligono
 

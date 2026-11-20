@@ -1,4 +1,5 @@
 """Almacén de imágenes en el sistema de archivos local."""
+
 from pathlib import Path
 from uuid import uuid4
 

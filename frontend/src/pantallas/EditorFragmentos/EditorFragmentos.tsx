@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { obtenerSalud, urlImagen } from "../../api/analisis";
-import type { FragmentoSolicitud, Punto } from "../../api/tipos";
+import type { Fragmento, FragmentoSolicitud, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
 import { Icono, type NombreIcono } from "../../componentes/Icono";
@@ -11,7 +11,14 @@ import { colorPorFragmento, LeyendaRangos } from "../../componentes/LeyendaRango
 import { MensajeError } from "../../componentes/MensajeError";
 import { ModalConfirmacion } from "../../componentes/ModalConfirmacion";
 import { type Herramienta, LienzoFragmentos } from "../../editor/LienzoFragmentos";
-import { cercaDe, contienePunto, dividirPoligono, unirPoligonos } from "../../editor/operacionesPoligonos";
+import {
+  AREA_MINIMA_FRAGMENTO_PX2,
+  cercaDe,
+  contienePunto,
+  dividirConTrazo,
+  esDiminuto,
+  unirPoligonos,
+} from "../../editor/operacionesPoligonos";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
 import { aSolicitud, useEdicionFragmentos } from "./useEdicionFragmentos";
 import "./EditorFragmentos.css";
@@ -24,6 +31,11 @@ const AYUDAS: Record<Herramienta, string> = {
   dividir: "Corrige subsegmentación: trace con dos clics una línea de corte que atraviese el fragmento de borde a borde.",
 };
 
+type ModoDivision = "recta" | "quebrada";
+
+const AYUDA_QUEBRADA =
+  "Corte libre: haga clic a lo largo de la grieta, de borde a borde del fragmento, y termine con doble clic o Enter.";
+
 const NOMBRES: Record<Herramienta, string> = {
   seleccionar: "Seleccionar",
   dibujar: "Dibujar",
@@ -35,13 +47,6 @@ const HERRAMIENTAS: { valor: Herramienta; texto: string; tecla: string; icono: N
   { valor: "dibujar", texto: NOMBRES.dibujar, tecla: "D", icono: "lapiz" },
   { valor: "dividir", texto: NOMBRES.dividir, tecla: "C", icono: "tijeras" },
 ];
-
-/** Lista de verificación del operador; solo orienta la revisión, no se guarda. */
-const REVISIONES = [
-  { id: "sub", titulo: "Subsegmentación", detalle: "Fragmentos contiguos detectados como uno solo → Dividir." },
-  { id: "omitidos", titulo: "Fragmentos no detectados", detalle: "Fragmentos visibles sin contorno → Dibujar." },
-  { id: "falsos", titulo: "Falsos positivos", detalle: "Sombras, vacíos o finos marcados como fragmento → Eliminar." },
-] as const;
 
 /** Quita los vértices repetidos consecutivos (el doble clic agrega el mismo punto dos veces). */
 function sinRepetidos(puntos: Punto[]): Punto[] {
@@ -59,7 +64,7 @@ export function EditorFragmentos() {
   const [trazo, setTrazo] = useState<Punto[]>([]);
   const [mostrarContornos, setMostrarContornos] = useState(true);
   const [confirmarSegmentar, setConfirmarSegmentar] = useState(false);
-  const [revision, setRevision] = useState<Set<string>>(new Set());
+  const [modoDivision, setModoDivision] = useState<ModoDivision>("recta");
 
   const ocupado = edicion.estadoGuardado === "guardando" || edicion.segmentando;
 
@@ -111,28 +116,69 @@ export function EditorFragmentos() {
     setSeleccionados(new Set());
   }, [aplicar, fragmentos, ocupado, seleccionados, setError]);
 
+  const dividir = useCallback(
+    (corte: Punto[]) => {
+      setTrazo([]);
+      // Prueba los fragmentos que toca el trazo hasta encontrar uno que quede cortado.
+      const medios = corte.slice(1).map((b, i) => ({ x: (corte[i].x + b.x) / 2, y: (corte[i].y + b.y) / 2 }));
+      const toca = (poligono: Punto[]) => [...corte, ...medios].some((p) => contienePunto(poligono, p));
+      let objetivo: Fragmento | null = null;
+      let piezas: Punto[][] | null = null;
+      for (const candidato of fragmentos.filter((f) => toca(f.poligono))) {
+        piezas = dividirConTrazo(candidato.poligono, corte);
+        if (piezas) {
+          objetivo = candidato;
+          break;
+        }
+      }
+      if (!objetivo || !piezas) {
+        setError("El corte debe atravesar un fragmento de un borde a otro.");
+        return;
+      }
+      if (piezas.some(esDiminuto)) {
+        setError(`Una de las partes quedaría con menos de ${AREA_MINIMA_FRAGMENTO_PX2} px². Trace el corte más al centro.`);
+        return;
+      }
+      const resto = fragmentos.filter((f) => f.id !== objetivo.id).map(aSolicitud);
+      const nuevos = piezas.map((poligono): FragmentoSolicitud => ({ poligono, origen: "MANUAL" }));
+      void aplicar([...resto, ...nuevos]);
+    },
+    [aplicar, fragmentos, setError],
+  );
+
   const cerrarDibujo = useCallback(() => {
     const puntos = sinRepetidos(trazo);
+    if (herramienta === "dividir" && modoDivision === "quebrada") {
+      if (puntos.length >= 2 && !ocupado) {
+        dividir(puntos);
+      }
+      return;
+    }
     if (herramienta !== "dibujar" || puntos.length < 3 || ocupado) {
+      return;
+    }
+    if (esDiminuto(puntos)) {
+      setTrazo([]);
+      setError(
+        `El contorno es demasiado pequeño (mínimo ${AREA_MINIMA_FRAGMENTO_PX2} px²). Haga clic alrededor de todo el borde del fragmento.`,
+      );
       return;
     }
     const nuevo: FragmentoSolicitud = { poligono: puntos, origen: "MANUAL" };
     void aplicar([...fragmentos.map(aSolicitud), nuevo]);
     setTrazo([]);
-  }, [aplicar, fragmentos, herramienta, ocupado, trazo]);
+  }, [aplicar, dividir, fragmentos, herramienta, modoDivision, ocupado, trazo, setError]);
 
-  const dividir = (a: Punto, b: Punto) => {
-    const medio = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const objetivo = fragmentos.find((f) => contienePunto(f.poligono, medio));
-    const piezas = objetivo ? dividirPoligono(objetivo.poligono, a, b) : null;
-    setTrazo([]);
-    if (!objetivo || !piezas) {
-      setError("La línea debe cruzar un fragmento de lado a lado (su centro debe quedar dentro).");
+  /** Quita el último punto marcado (clic equivocado al trazar). */
+  const quitarUltimoPunto = useCallback(() => setTrazo((t) => t.slice(0, -1)), []);
+
+  // Fragmentos diminutos guardados antes de existir la regla de área mínima.
+  const diminutos = useMemo(() => fragmentos.filter((f) => esDiminuto(f.poligono)), [fragmentos]);
+  const eliminarDiminutos = () => {
+    if (ocupado) {
       return;
     }
-    const resto = fragmentos.filter((f) => f.id !== objetivo.id).map(aSolicitud);
-    const nuevos = piezas.map((poligono): FragmentoSolicitud => ({ poligono, origen: "MANUAL" }));
-    void aplicar([...resto, ...nuevos]);
+    void aplicar(fragmentos.filter((f) => !esDiminuto(f.poligono)).map(aSolicitud));
   };
 
   const alClicImagen = (punto: Punto) => {
@@ -141,12 +187,12 @@ export function EditorFragmentos() {
     }
     if (herramienta === "seleccionar") {
       setSeleccionados(new Set());
-    } else if (herramienta === "dibujar") {
+    } else if (herramienta === "dibujar" || modoDivision === "quebrada") {
       setTrazo((t) => [...t, punto]);
     } else if (trazo.length === 0) {
       setTrazo([punto]);
     } else {
-      dividir(trazo[0], punto);
+      dividir([trazo[0], punto]);
     }
   };
 
@@ -174,7 +220,14 @@ export function EditorFragmentos() {
       const tecla = evento.key.toLowerCase();
       if ((evento.ctrlKey || evento.metaKey) && tecla === "z") {
         evento.preventDefault();
-        void edicion.deshacer();
+        if (trazo.length > 0) {
+          quitarUltimoPunto();
+        } else {
+          void edicion.deshacer();
+        }
+      } else if (tecla === "backspace" && trazo.length > 0) {
+        evento.preventDefault();
+        quitarUltimoPunto();
       } else if (tecla === "delete" || tecla === "backspace") {
         borrarSeleccion();
       } else if (tecla === "escape") {
@@ -194,7 +247,7 @@ export function EditorFragmentos() {
     };
     document.addEventListener("keydown", alPresionar);
     return () => document.removeEventListener("keydown", alPresionar);
-  }, [borrarSeleccion, cerrarDibujo, edicion, unirSeleccion]);
+  }, [borrarSeleccion, cerrarDibujo, edicion, quitarUltimoPunto, trazo.length, unirSeleccion]);
 
   const pedirSegmentacion = () => {
     if (fragmentos.length > 0) {
@@ -216,17 +269,14 @@ export function EditorFragmentos() {
   }[edicion.estadoGuardado];
 
   const segmentado = fragmentos.length > 0;
-  const revisados = REVISIONES.filter((r) => revision.has(r.id)).length;
-  const alternarRevision = (idRevision: string) =>
-    setRevision((actual) => {
-      const nuevo = new Set(actual);
-      if (nuevo.has(idRevision)) {
-        nuevo.delete(idRevision);
-      } else {
-        nuevo.add(idRevision);
-      }
-      return nuevo;
-    });
+  const guardando = edicion.estadoGuardado === "guardando";
+  const mensajeEspera = edicion.segmentando
+    ? "Segmentando la imagen con el modelo de IA..."
+    : guardando
+      ? "Guardando el cambio y recalculando tamaños..."
+      : null;
+  const ayudaHerramienta = herramienta === "dividir" && modoDivision === "quebrada" ? AYUDA_QUEBRADA : AYUDAS[herramienta];
+  const minimoPuntos = herramienta === "dibujar" ? 3 : 2;
 
   return (
     <div className="editor">
@@ -307,6 +357,7 @@ export function EditorFragmentos() {
                 regionExcluida={detalle.region_excluida?.poligono ?? null}
                 herramienta={herramienta}
                 trazo={trazo}
+                mensajeEspera={mensajeEspera}
                 mostrarContornos={mostrarContornos}
                 etiquetaFragmento={etiquetaFragmento}
                 onClicFragmento={alClicFragmento}
@@ -317,17 +368,43 @@ export function EditorFragmentos() {
 
             <div className="editor__ayuda-lienzo" role="status">
               <span className="editor__chip-modo">{NOMBRES[herramienta]}</span>
-              <span className="editor__ayuda-texto">
-                {edicion.segmentando
-                  ? "Segmentando la imagen con el modelo de IA... puede tardar unos segundos."
-                  : AYUDAS[herramienta]}
-              </span>
-              {herramienta === "dibujar" && trazo.length > 0 && (
+              <span className="editor__ayuda-texto">{mensajeEspera ?? ayudaHerramienta}</span>
+              {herramienta === "dividir" && (
+                <span className="editor__opciones" role="radiogroup" aria-label="Tipo de corte">
+                  {(
+                    [
+                      ["recta", "Línea recta"],
+                      ["quebrada", "Corte libre"],
+                    ] as const
+                  ).map(([valor, texto]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={modoDivision === valor}
+                      className={`editor__opcion${modoDivision === valor ? " editor__opcion--activa" : ""}`}
+                      onClick={() => {
+                        setModoDivision(valor);
+                        setTrazo([]);
+                      }}
+                    >
+                      {texto}
+                    </button>
+                  ))}
+                </span>
+              )}
+              {trazo.length > 0 && (
                 <span className="editor__fila">
-                  <Boton onClick={cerrarDibujo} disabled={sinRepetidos(trazo).length < 3}>
-                    Terminar fragmento
+                  {(herramienta === "dibujar" || modoDivision === "quebrada") && (
+                    <Boton onClick={cerrarDibujo} disabled={ocupado || sinRepetidos(trazo).length < minimoPuntos}>
+                      {herramienta === "dibujar" ? "Terminar fragmento" : "Cortar"}
+                    </Boton>
+                  )}
+                  <Boton variante="secundario" onClick={quitarUltimoPunto} title="Quitar el último punto (Retroceso o Ctrl + Z)">
+                    <Icono nombre="deshacer" />
+                    Quitar punto
                   </Boton>
-                  <Boton variante="secundario" onClick={() => setTrazo([])}>
+                  <Boton variante="secundario" onClick={() => setTrazo([])} title="Cancelar el trazo (Esc)">
                     Cancelar
                   </Boton>
                 </span>
@@ -369,31 +446,43 @@ export function EditorFragmentos() {
                   )}
                 </p>
               )}
+              {detalle?.calibracion && (
+                <div className="editor__escala">
+                  <span className="editor__ayuda">
+                    Escala{" "}
+                    <span className="cifra">{formatearNumero(detalle.calibracion.factor_mm_por_px, 4)} mm/px</span>{" "}
+                    (objeto de {formatearMm(detalle.calibracion.longitud_real_mm)})
+                  </span>
+                  <Boton variante="secundario" onClick={() => navigate(`/analisis/${id}/calibracion`)}>
+                    Recalibrar
+                  </Boton>
+                </div>
+              )}
+              <p className="editor__ayuda">
+                {detalle?.region_excluida
+                  ? "Región excluida activa (contorno punteado): no se cuentan los fragmentos cuyo centro cae dentro."
+                  : "Sin región excluida. Si el objeto de referencia aparece entre las rocas, exclúyalo en Calibración para que no se cuente como fragmento."}
+              </p>
+              {segmentado && (
+                <p className="editor__ayuda">
+                  Revise el resultado: <strong>Dividir</strong> los fragmentos unidos, <strong>Dibujar</strong> los no
+                  detectados y <strong>Eliminar</strong> sombras o huecos marcados como roca.
+                </p>
+              )}
             </section>
 
-            <section
-              className={`editor__seccion${segmentado ? " editor__seccion--activa" : ""}`}
-              aria-labelledby="titulo-control"
-            >
-              <div className="editor__cabecera">
-                <span className={`editor__marca${segmentado ? " editor__marca--activa" : ""}`}>2</span>
-                <h2 id="titulo-control" className="editor__subtitulo">
-                  Control de calidad
-                </h2>
-                <span className="editor__ayuda cifra">
-                  {revisados} / {REVISIONES.length}
-                </span>
-              </div>
-              {REVISIONES.map((r) => (
-                <label key={r.id} className="editor__revision">
-                  <input type="checkbox" checked={revision.has(r.id)} onChange={() => alternarRevision(r.id)} />
-                  <span>
-                    <strong>{r.titulo}</strong>
-                    <span className="editor__ayuda">{r.detalle}</span>
-                  </span>
-                </label>
-              ))}
-            </section>
+            {diminutos.length > 0 && (
+              <section className="editor__seccion" aria-label="Fragmentos diminutos">
+                <p className="editor__aviso" role="status">
+                  Hay {diminutos.length} {diminutos.length === 1 ? "fragmento" : "fragmentos"} de menos de{" "}
+                  {AREA_MINIMA_FRAGMENTO_PX2} px², probablemente clics accidentales. Distorsionan el histograma y el
+                  ajuste, y no se pueden guardar otros cambios mientras existan.
+                </p>
+                <Boton variante="secundario" onClick={eliminarDiminutos} disabled={ocupado}>
+                  Eliminar {diminutos.length === 1 ? "fragmento diminuto" : "fragmentos diminutos"}
+                </Boton>
+              </section>
+            )}
 
             <section className="editor__seccion" aria-labelledby="titulo-indicadores" aria-live="polite">
               <div className="editor__cabecera">

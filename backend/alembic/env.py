@@ -1,4 +1,5 @@
 """Entorno de Alembic: toma la URL de la base de datos desde DATABASE_URL."""
+
 from logging.config import fileConfig
 
 from alembic import context

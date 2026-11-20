@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { obtenerAnalisis, obtenerResultados, urlCsv, urlImagen } from "../../api/analisis";
+import { obtenerAnalisis, obtenerResultados, urlCsv, urlImagen, urlXlsx } from "../../api/analisis";
 import { mensajeDeError } from "../../api/errores";
 import type { AnalisisDetalle, Resultados as DatosResultados } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
@@ -23,15 +23,8 @@ export function Resultados() {
   const [detalle, setDetalle] = useState<AnalisisDetalle | null>(null);
   const [resultados, setResultados] = useState<DatosResultados | null>(null);
   const [error, setError] = useState("");
-  const datos = useRef<HTMLDetailsElement>(null);
-
-  const exportarPdf = () => {
-    // Las tablas de datos se incluyen en el informe aunque estén plegadas en pantalla.
-    if (datos.current) {
-      datos.current.open = true;
-    }
-    window.print();
-  };
+  // El informe PDF usa la plantilla de impresión (@media print): sin botones ni ayudas.
+  const exportarPdf = () => window.print();
 
   useEffect(() => {
     Promise.all([obtenerAnalisis(id), obtenerResultados(id)])
@@ -72,7 +65,7 @@ export function Resultados() {
             <p className="resultados__sobretitulo">Informe de análisis granulométrico</p>
             <h1 className="resultados__titulo">{detalle?.nombre ?? "Cargando..."}</h1>
             {detalle && (
-              <p className="resultados__meta">
+              <p className="resultados__meta no-imprimir">
                 {formatearFecha(detalle.fecha_creacion)} · Imagen {detalle.imagen.ancho_px}×{detalle.imagen.alto_px} px
                 {detalle.calibracion &&
                   ` · Escala ${formatearNumero(detalle.calibracion.factor_mm_por_px, 4)} mm/px (objeto de ${formatearMm(detalle.calibracion.longitud_real_mm)})`}
@@ -86,11 +79,21 @@ export function Resultados() {
             </Boton>
             <a
               className={`boton boton--secundario${resultados ? "" : " resultados__enlace-boton--inactivo"}`}
-              href={resultados ? urlCsv(id) : undefined}
+              href={resultados ? urlXlsx(id) : undefined}
+              title="Hojas Resumen, Curva y Fragmentos"
               download
             >
               <Icono nombre="descargar" />
-              Exportar CSV
+              Exportar Excel
+            </a>
+            <a
+              className={`boton boton--secundario${resultados ? "" : " resultados__enlace-boton--inactivo"}`}
+              href={resultados ? urlCsv(id) : undefined}
+              title="Tabla de fragmentos en CSV estándar (coma y punto decimal)"
+              download
+            >
+              <Icono nombre="descargar" />
+              CSV
             </a>
             <Boton onClick={exportarPdf} disabled={!resultados}>
               <Icono nombre="descargar" />
@@ -101,7 +104,62 @@ export function Resultados() {
 
         {resultados && detalle && (
           <>
-            <section className="resultados__indicadores" aria-label="Indicadores granulométricos">
+            <section className="resultados__informe solo-imprimir" aria-label="Datos del informe">
+              <table className="resultados__tabla resultados__tabla--ficha">
+                <tbody>
+                  <tr>
+                    <th scope="row">Fecha</th>
+                    <td>{formatearFecha(detalle.fecha_creacion)}</td>
+                    <th scope="row">Resolución</th>
+                    <td>
+                      {detalle.imagen.ancho_px} × {detalle.imagen.alto_px} px
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Objeto de referencia</th>
+                    <td>{detalle.calibracion ? formatearMm(detalle.calibracion.longitud_real_mm) : "—"}</td>
+                    <th scope="row">Escala</th>
+                    <td>
+                      {detalle.calibracion ? `${formatearNumero(detalle.calibracion.factor_mm_por_px, 4)} mm/px` : "—"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Fragmentos medidos (N)</th>
+                    <td>{resultados.numero_fragmentos}</td>
+                    <th scope="row">Modelo</th>
+                    <td>Rosin-Rammler (tramo 10 %–90 %)</td>
+                  </tr>
+                </tbody>
+              </table>
+              <table className="resultados__tabla resultados__tabla--resumen">
+                <thead>
+                  <tr>
+                    <th>D20</th>
+                    <th>D50</th>
+                    <th>D60</th>
+                    <th>D80</th>
+                    <th>D90</th>
+                    <th>
+                      x<sub>c</sub>
+                    </th>
+                    <th>n</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{formatearMm(resultados.d20)}</td>
+                    <td>{formatearMm(resultados.d50)}</td>
+                    <td>{formatearMm(resultados.d60)}</td>
+                    <td>{formatearMm(resultados.d80)}</td>
+                    <td>{formatearMm(resultados.d90)}</td>
+                    <td>{formatearMm(resultados.tamano_caracteristico_mm)}</td>
+                    <td>{formatearNumero(resultados.indice_n, 2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section className="resultados__indicadores no-imprimir" aria-label="Indicadores granulométricos">
               {ORDEN_INDICADORES.map((clave) => (
                 <button
                   key={clave}
@@ -116,11 +174,12 @@ export function Resultados() {
               ))}
             </section>
 
-            <div className="resultados__graficos">
+            <div className="resultados__graficos resultados__graficos--curva">
               <section className="resultados__tarjeta">
                 <h2 className="resultados__subtitulo">Curva granulométrica acumulada</h2>
                 <GraficoCurva
                   curva={resultados.curva}
+                  curvaTeorica={resultados.curva_teorica}
                   referencias={
                     definicion.pasante_pct === null || seleccion === "indice_n"
                       ? []
@@ -146,8 +205,8 @@ export function Resultados() {
 
             <div className="resultados__graficos">
               <section className="resultados__tarjeta">
-                <h2 className="resultados__subtitulo">Histograma de frecuencias</h2>
-                <GraficoHistograma clases={resultados.histograma} />
+                <h2 className="resultados__subtitulo">Distribución por rango de tamaño</h2>
+                <GraficoHistograma clases={resultados.histograma} rangos={resultados.rangos} />
               </section>
               <section className="resultados__tarjeta">
                 <h2 className="resultados__subtitulo">Modelo de distribución</h2>
@@ -155,11 +214,19 @@ export function Resultados() {
                   P(x) = 1 − exp[−(x / x<sub>c</sub>)<sup>n</sup>]
                 </p>
                 <dl className="resultados__parametros">
+                  <dt>
+                    Tamaño característico, x<sub>c</sub> (63,2 % pasante)
+                  </dt>
+                  <dd className="cifra">{formatearMm(resultados.tamano_caracteristico_mm)}</dd>
                   <dt>Índice de uniformidad, n</dt>
                   <dd className="cifra">{formatearNumero(resultados.indice_n, 2)}</dd>
                   <dt>Fragmentos medidos, N</dt>
                   <dd className="cifra">{resultados.numero_fragmentos}</dd>
                 </dl>
+                <p className="resultados__nota">
+                  Ajustado en el tramo central de la curva (10 %–90 % pasante). La línea punteada de la curva
+                  acumulada es este modelo: si se aparta mucho de la medida, el ajuste es pobre.
+                </p>
               </section>
             </div>
 
@@ -190,23 +257,23 @@ export function Resultados() {
               </div>
             </section>
 
-            <details ref={datos} className="resultados__tarjeta resultados__datos">
-              <summary>Ver datos: histograma y tamaño de cada fragmento</summary>
-              <h3 className="resultados__subtitulo">Histograma</h3>
+            <details className="resultados__tarjeta resultados__datos no-imprimir">
+              <summary>Ver datos: rangos y tamaño de cada fragmento</summary>
+              <h3 className="resultados__subtitulo">Por rango de tamaño</h3>
               <table className="resultados__tabla">
                 <thead>
                   <tr>
-                    <th>Clase (mm)</th>
+                    <th>Rango</th>
+                    <th>Tamaño</th>
                     <th>Fragmentos</th>
                     <th>% retenido (masa)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {resultados.histograma.map((c) => (
-                    <tr key={c.limite_inferior_mm}>
-                      <td>
-                        {formatearNumero(c.limite_inferior_mm, 0)}–{formatearNumero(c.limite_superior_mm, 0)}
-                      </td>
+                  {resultados.histograma.map((c, i) => (
+                    <tr key={i}>
+                      <td>{resultados.rangos[i]?.nombre}</td>
+                      <td>{resultados.rangos[i] ? textoRango(resultados.rangos[i]) : ""}</td>
                       <td>{c.numero_fragmentos}</td>
                       <td>{formatearNumero(c.porcentaje_retenido, 1)}</td>
                     </tr>

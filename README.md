@@ -46,7 +46,7 @@ Proyecto de la asignatura **Trabajo de Campo**, Ingeniería de Sistemas y Comput
 | Editor de fragmentos: borrar, dibujar, unir, dividir y deshacer | ✅ |
 | Resultados: Dx, n, curva, histograma y colores por rango | ✅ |
 | Informe PDF (desde el navegador) e historial de análisis | ✅ |
-| Exportación a CSV (separador `;`, coma decimal, supuestos incluidos) | ✅ |
+| Exportación a Excel (Resumen, Curva, Fragmentos) y CSV estándar | ✅ |
 | Configurar rangos de tamaño y colores (pantalla Configuración) | ✅ |
 | Usuarios con roles (RF-13) | Complementario, no implementado |
 

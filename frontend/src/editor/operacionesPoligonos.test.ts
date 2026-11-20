@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { Punto } from "../api/tipos";
 import {
+  AREA_MINIMA_FRAGMENTO_PX2,
   areaPoligono,
   cercaDe,
   contienePunto,
+  dividirConTrazo,
   dividirPoligono,
+  esDiminuto,
   unirPoligonos,
 } from "./operacionesPoligonos";
 
@@ -104,5 +107,62 @@ describe("contienePunto", () => {
   it("distingue puntos interiores y exteriores", () => {
     expect(contienePunto(cuadrado(0, 0, 10), { x: 5, y: 5 })).toBe(true);
     expect(contienePunto(cuadrado(0, 0, 10), { x: 15, y: 5 })).toBe(false);
+  });
+});
+
+describe("esDiminuto", () => {
+  it("marca como diminutos los contornos de menos de 20 px² (clics accidentales)", () => {
+    expect(esDiminuto(cuadrado(0, 0, 2))).toBe(true); // 4 px²
+    expect(esDiminuto([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 2 }, { x: 0, y: 2 }])).toBe(false); // 20 px²
+    expect(AREA_MINIMA_FRAGMENTO_PX2).toBe(20);
+  });
+});
+
+describe("dividirConTrazo (línea quebrada)", () => {
+  it("un corte en L separa una esquina del cuadrado", () => {
+    // Entra por arriba en x = 4, baja hasta y = 4 y sale por la derecha.
+    const trazo = [
+      { x: 4, y: -2 },
+      { x: 4, y: 4 },
+      { x: 12, y: 4 },
+    ];
+    const partes = dividirConTrazo(cuadrado(0, 0, 10), trazo);
+    expect(partes).toHaveLength(2);
+    const areas = (partes ?? []).map(areaPoligono).sort((a, b) => a - b);
+    expect(areas[0]).toBeCloseTo(24); // 6 × 4
+    expect(areas[1]).toBeCloseTo(76);
+  });
+
+  it("con dos puntos equivale al corte recto", () => {
+    const partes = dividirConTrazo(cuadrado(0, 0, 10), [
+      { x: 5, y: -5 },
+      { x: 5, y: 15 },
+    ]);
+    const areas = (partes ?? []).map(areaPoligono).sort((a, b) => a - b);
+    expect(areas).toHaveLength(2);
+    expect(areas[0]).toBeCloseTo(50);
+  });
+
+  it("las piezas suman el área original", () => {
+    const trazo = [
+      { x: -1, y: 2 },
+      { x: 3, y: 6 },
+      { x: 7, y: 3 },
+      { x: 11, y: 8 },
+    ];
+    const partes = dividirConTrazo(cuadrado(0, 0, 10), trazo) ?? [];
+    expect(partes.length).toBeGreaterThanOrEqual(2);
+    expect(partes.map(areaPoligono).reduce((a, b) => a + b, 0)).toBeCloseTo(100);
+  });
+
+  it("devuelve null si el trazo no atraviesa el fragmento", () => {
+    expect(
+      dividirConTrazo(cuadrado(0, 0, 10), [
+        { x: 20, y: 0 },
+        { x: 25, y: 5 },
+        { x: 20, y: 10 },
+      ]),
+    ).toBeNull();
+    expect(dividirConTrazo(cuadrado(0, 0, 10), [{ x: 1, y: 1 }])).toBeNull();
   });
 });

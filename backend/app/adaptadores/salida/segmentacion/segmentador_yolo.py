@@ -1,4 +1,5 @@
 """Adaptador del puerto `Segmentador` con YOLOv11m-seg (ultralytics)."""
+
 import io
 from typing import Any
 

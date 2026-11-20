@@ -1,4 +1,5 @@
 """Caso de uso: calcular los resultados granulométricos de un análisis (HU-07 a HU-09)."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import RepositorioAnalisis, RepositorioConfiguracion

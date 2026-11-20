@@ -1,4 +1,5 @@
 """Modelos de tabla de SQLAlchemy (independientes de las clases del dominio)."""
+
 from datetime import datetime
 from typing import Any
 from uuid import UUID

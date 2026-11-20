@@ -1,4 +1,5 @@
 """Pruebas del almacén S3/R2 con moto (sin red)."""
+
 import re
 from collections.abc import Iterator
 from typing import Any
@@ -98,8 +99,6 @@ def test_otro_error_de_s3_se_propaga(cliente: Any) -> None:
 
 
 def test_crear_cliente_s3_configura_endpoint_y_region() -> None:
-    cliente = crear_cliente_s3(
-        "https://cuenta.r2.cloudflarestorage.com", "id", "secreto", "auto"
-    )
+    cliente = crear_cliente_s3("https://cuenta.r2.cloudflarestorage.com", "id", "secreto", "auto")
     assert cliente.meta.endpoint_url == "https://cuenta.r2.cloudflarestorage.com"
     assert cliente.meta.region_name == "auto"

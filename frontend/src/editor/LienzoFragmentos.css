@@ -85,3 +85,44 @@
   pointer-events: none;
   box-shadow: var(--sombra-flotante);
 }
+
+/* Aviso de espera mientras se guarda un cambio o segmenta el modelo. */
+.lienzo-fragmentos__espera {
+  position: absolute;
+  top: var(--espacio-3);
+  left: 50%;
+  z-index: var(--capa-tooltip);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  transform: translateX(-50%);
+  padding: var(--espacio-2) var(--espacio-3);
+  border-radius: var(--radio-medio);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-size: var(--tamano-texto-pequeno);
+  font-weight: var(--peso-negrita);
+  box-shadow: var(--sombra-flotante);
+  pointer-events: none;
+}
+
+.lienzo-fragmentos__indicador {
+  width: var(--espacio-3);
+  height: var(--espacio-3);
+  border: var(--borde-grosor-enfasis) solid var(--color-borde);
+  border-top-color: var(--color-acento);
+  border-radius: var(--radio-redondo);
+  animation: lienzo-fragmentos-girar var(--duracion-giro) linear infinite;
+}
+
+@keyframes lienzo-fragmentos-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lienzo-fragmentos__indicador {
+    animation: none;
+  }
+}

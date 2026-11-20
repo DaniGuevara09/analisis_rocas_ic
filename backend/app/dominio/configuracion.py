@@ -77,11 +77,13 @@ def _validar_color(color: str) -> str:
     return color.lower()
 
 
-# Rampa ordinal azul validada (claro = fino, oscuro = grueso): un solo tono, luminosidad
-# monótona y el extremo claro con contraste >= 2:1 sobre fondo blanco.
+# Límites fijos en mm, para que cada nombre signifique lo mismo en todas las fotos.
+# Son valores iniciales razonables para voladura: cada planta los ajusta en
+# Configuración (p. ej. "Sobretamaño" según la boca de la chancadora).
+# Colores de alto contraste sobre roca gris: celeste, verde, amarillo, naranja y rojo.
 CONFIGURACION_POR_DEFECTO = ConfiguracionRangos(
-    modo=ModoRangos.RELATIVO,
-    cortes=(20.0, 50.0, 80.0, 90.0),
+    modo=ModoRangos.ABSOLUTO,
+    cortes=(50.0, 150.0, 400.0, 800.0),
     nombres=("Finos", "Pequeños", "Medianos", "Gruesos", "Sobretamaño"),
-    colores=("#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"),
+    colores=("#29b6f6", "#43a047", "#ffeb3b", "#f57c00", "#e53935"),
 )

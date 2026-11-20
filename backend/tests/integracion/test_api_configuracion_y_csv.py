@@ -1,7 +1,11 @@
 """Pruebas de la API de configuración de rangos (RF-14) y del CSV de resultados (RF-09)."""
 
+import csv
+import io
+import zipfile
 from collections.abc import Iterator
 from uuid import uuid4
+from xml.etree import ElementTree
 
 import pytest
 from fastapi.testclient import TestClient
@@ -66,8 +70,8 @@ def id_segmentado(cliente: TestClient) -> str:
 # --- Configuración de rangos -------------------------------------------------
 def test_configuracion_por_defecto(cliente: TestClient) -> None:
     datos = cliente.get("/api/configuracion/rangos").json()
-    assert datos["modo"] == "RELATIVO"
-    assert datos["cortes"] == [20, 50, 80, 90]
+    assert datos["modo"] == "ABSOLUTO"
+    assert datos["cortes"] == [50, 150, 400, 800]
     assert len(datos["colores"]) == 5
 
 
@@ -94,26 +98,71 @@ def test_restablecer_configuracion(cliente: TestClient) -> None:
     cliente.put("/api/configuracion/rangos", json=ABSOLUTA)
     respuesta = cliente.delete("/api/configuracion/rangos")
     assert respuesta.status_code == 200
-    assert respuesta.json()["modo"] == "RELATIVO"
-    assert cliente.get("/api/configuracion/rangos").json()["modo"] == "RELATIVO"
+    assert respuesta.json()["modo"] == "ABSOLUTO"
+    assert cliente.get("/api/configuracion/rangos").json()["colores"] == respuesta.json()["colores"]
 
 
-# --- CSV -----------------------------------------------------------------------
-def test_csv_contiene_indicadores_supuestos_y_fragmentos(
+# --- CSV y Excel -----------------------------------------------------------------
+def test_csv_es_una_tabla_estandar_con_coma_y_punto_decimal(
     cliente: TestClient, id_segmentado: str
 ) -> None:
     respuesta = cliente.get(f"/api/analisis/{id_segmentado}/resultados.csv")
     assert respuesta.status_code == 200
     assert respuesta.headers["content-type"].startswith("text/csv")
     assert "attachment" in respuesta.headers["content-disposition"]
-    texto = respuesta.content.decode("utf-8-sig")
-    lineas = texto.splitlines()
-    assert lineas[0] == "Informe granulometrico;pila norte"
-    assert any(linea.startswith("D50 (mm);") for linea in lineas)
-    assert any("esf" in linea for linea in lineas)  # supuesto de esfericidad (RNF-07)
-    filas_fragmento = [linea for linea in lineas if linea.split(";")[0] in {"1", "2", "3"}]
-    assert len(filas_fragmento) == 3
-    assert "," in filas_fragmento[0].split(";")[5]  # coma decimal
+    filas = list(csv.reader(io.StringIO(respuesta.content.decode("utf-8-sig"))))
+    assert filas[0] == [
+        "numero",
+        "id",
+        "origen",
+        "area_px2",
+        "area_mm2",
+        "diametro_equivalente_mm",
+        "rango",
+    ]
+    assert len(filas) == 4  # encabezado + 3 fragmentos, sin otras tablas
+    assert all(len(fila) == 7 for fila in filas)
+    float(filas[1][5])  # punto decimal: se convierte sin ajustes regionales
+
+
+def _hojas_xlsx(contenido: bytes) -> dict[str, list[list[str]]]:
+    espacio = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(io.BytesIO(contenido)) as libro:
+        nombres = [
+            h.get("name")
+            for h in ElementTree.fromstring(libro.read("xl/workbook.xml")).iter(
+                f"{{{espacio['m']}}}sheet"
+            )
+        ]
+        hojas = {}
+        for i, nombre in enumerate(nombres, start=1):
+            raiz = ElementTree.fromstring(libro.read(f"xl/worksheets/sheet{i}.xml"))
+            hojas[str(nombre)] = [
+                ["".join(c.itertext()) for c in fila.findall("m:c", espacio)]
+                for fila in raiz.iter(f"{{{espacio['m']}}}row")
+            ]
+    return hojas
+
+
+def test_xlsx_tiene_resumen_curva_y_fragmentos(cliente: TestClient, id_segmentado: str) -> None:
+    respuesta = cliente.get(f"/api/analisis/{id_segmentado}/resultados.xlsx")
+    assert respuesta.status_code == 200
+    assert "spreadsheetml" in respuesta.headers["content-type"]
+    hojas = _hojas_xlsx(respuesta.content)
+    assert list(hojas) == ["Resumen", "Curva", "Fragmentos"]
+
+    resumen = {fila[0]: fila[1:] for fila in hojas["Resumen"] if fila}
+    assert resumen["Informe granulométrico"] == ["pila norte"]
+    assert (
+        float(resumen["Longitud del objeto de referencia (mm)"][0])
+        == CALIBRACION["longitud_real_mm"]
+    )
+    assert float(resumen["D50"][0]) > 0
+    assert float(resumen["Tamaño característico x_c (Rosin-Rammler)"][0]) > 0
+    assert any("esférica" in clave for clave in resumen)  # supuestos (RNF-07)
+
+    assert hojas["Curva"][0] == ["Diámetro (mm)", "% pasante medido", "% pasante Rosin-Rammler"]
+    assert len(hojas["Fragmentos"]) == 4
 
 
 def test_csv_sin_fragmentos_suficientes_devuelve_409(cliente: TestClient) -> None:
@@ -127,3 +176,4 @@ def test_csv_sin_fragmentos_suficientes_devuelve_409(cliente: TestClient) -> Non
 
 def test_csv_de_analisis_inexistente_devuelve_404(cliente: TestClient) -> None:
     assert cliente.get(f"/api/analisis/{uuid4()}/resultados.csv").status_code == 404
+    assert cliente.get(f"/api/analisis/{uuid4()}/resultados.xlsx").status_code == 404
