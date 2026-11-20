@@ -2,11 +2,13 @@ import { ErrorApi } from "./errores";
 import type {
   AnalisisDetalle,
   AnalisisResumen,
+  ConfiguracionRangos,
   Fragmento,
   FragmentoSolicitud,
   Punto,
   RespuestaCalibracion,
   Resultados,
+  Salud,
 } from "./tipos";
 
 const BASE = "/api";
@@ -122,4 +124,29 @@ export async function guardarFragmentos(
 
 export async function obtenerResultados(id: string): Promise<Resultados> {
   return (await (await solicitar(`/analisis/${id}/resultados`)).json()) as Resultados;
+}
+
+/** URL de descarga del CSV de resultados (RF-09). */
+export function urlCsv(id: string): string {
+  return `${BASE}/analisis/${id}/resultados.csv`;
+}
+
+export async function obtenerSalud(): Promise<Salud> {
+  return (await (await solicitar("/salud")).json()) as Salud;
+}
+
+export async function obtenerConfiguracionRangos(): Promise<ConfiguracionRangos> {
+  return (await (await solicitar("/configuracion/rangos")).json()) as ConfiguracionRangos;
+}
+
+export async function guardarConfiguracionRangos(
+  configuracion: ConfiguracionRangos,
+): Promise<ConfiguracionRangos> {
+  const respuesta = await solicitar("/configuracion/rangos", conJson("PUT", configuracion));
+  return (await respuesta.json()) as ConfiguracionRangos;
+}
+
+export async function restablecerConfiguracionRangos(): Promise<ConfiguracionRangos> {
+  const respuesta = await solicitar("/configuracion/rangos", { method: "DELETE" });
+  return (await respuesta.json()) as ConfiguracionRangos;
 }

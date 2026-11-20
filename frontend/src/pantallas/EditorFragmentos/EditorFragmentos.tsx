@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { urlImagen } from "../../api/analisis";
+import { obtenerSalud, urlImagen } from "../../api/analisis";
 import type { FragmentoSolicitud, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
-import { EtiquetaEstado } from "../../componentes/EtiquetaEstado";
+import { Icono, type NombreIcono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
-import { LeyendaRangos } from "../../componentes/LeyendaRangos";
+import { colorPorFragmento, LeyendaRangos } from "../../componentes/LeyendaRangos";
 import { MensajeError } from "../../componentes/MensajeError";
 import { ModalConfirmacion } from "../../componentes/ModalConfirmacion";
 import { type Herramienta, LienzoFragmentos } from "../../editor/LienzoFragmentos";
@@ -18,11 +18,30 @@ import "./EditorFragmentos.css";
 
 const AYUDAS: Record<Herramienta, string> = {
   seleccionar:
-    "Haga clic en un fragmento para seleccionarlo (Shift + clic para varios). Rueda del ratón: zoom; arrastre: mover.",
+    "Clic sobre un fragmento para ver su tamaño; Shift + clic para seleccionar varios y luego Unir o Eliminar. Rueda del ratón o botones: zoom; arrastre: desplazar.",
   dibujar:
-    "Haga clic alrededor de la roca omitida. Para terminar, haga clic en el primer punto, doble clic o Enter.",
-  dividir: "Trace una línea con dos clics sobre el fragmento que quiere separar.",
+    "Digitalice el contorno de un fragmento no detectado. Cierre el polígono sobre el primer vértice, con doble clic o con Enter.",
+  dividir: "Corrige subsegmentación: trace con dos clics una línea de corte que atraviese el fragmento de borde a borde.",
 };
+
+const NOMBRES: Record<Herramienta, string> = {
+  seleccionar: "Seleccionar",
+  dibujar: "Dibujar",
+  dividir: "Dividir",
+};
+
+const HERRAMIENTAS: { valor: Herramienta; texto: string; tecla: string; icono: NombreIcono }[] = [
+  { valor: "seleccionar", texto: NOMBRES.seleccionar, tecla: "V", icono: "cursor" },
+  { valor: "dibujar", texto: NOMBRES.dibujar, tecla: "D", icono: "lapiz" },
+  { valor: "dividir", texto: NOMBRES.dividir, tecla: "C", icono: "tijeras" },
+];
+
+/** Lista de verificación del operador; solo orienta la revisión, no se guarda. */
+const REVISIONES = [
+  { id: "sub", titulo: "Subsegmentación", detalle: "Fragmentos contiguos detectados como uno solo → Dividir." },
+  { id: "omitidos", titulo: "Fragmentos no detectados", detalle: "Fragmentos visibles sin contorno → Dibujar." },
+  { id: "falsos", titulo: "Falsos positivos", detalle: "Sombras, vacíos o finos marcados como fragmento → Eliminar." },
+] as const;
 
 /** Quita los vértices repetidos consecutivos (el doble clic agrega el mismo punto dos veces). */
 function sinRepetidos(puntos: Punto[]): Punto[] {
@@ -40,11 +59,20 @@ export function EditorFragmentos() {
   const [trazo, setTrazo] = useState<Punto[]>([]);
   const [mostrarContornos, setMostrarContornos] = useState(true);
   const [confirmarSegmentar, setConfirmarSegmentar] = useState(false);
+  const [revision, setRevision] = useState<Set<string>>(new Set());
 
   const ocupado = edicion.estadoGuardado === "guardando" || edicion.segmentando;
 
-  const rangoPorId = useMemo(
-    () => new Map((resultados?.fragmentos ?? []).map((f) => [f.id, f.indice_rango])),
+  // null = aún no se sabe; el editor avisa si no hay modelo instalado en backend/modelos.
+  const [modeloDisponible, setModeloDisponible] = useState<boolean | null>(null);
+  useEffect(() => {
+    obtenerSalud()
+      .then((salud) => setModeloDisponible(salud.modelo_disponible))
+      .catch(() => setModeloDisponible(null));
+  }, []);
+
+  const colorPorId = useMemo(
+    () => colorPorFragmento(resultados?.rangos ?? [], resultados?.fragmentos ?? []),
     [resultados],
   );
   const diametroPorId = useMemo(
@@ -182,10 +210,23 @@ export function EditorFragmentos() {
   };
 
   const textoGuardado = {
-    guardado: "Cambios guardados",
+    guardado: "Guardado",
     guardando: "Guardando...",
     error: "No se guardó el último cambio",
   }[edicion.estadoGuardado];
+
+  const segmentado = fragmentos.length > 0;
+  const revisados = REVISIONES.filter((r) => revision.has(r.id)).length;
+  const alternarRevision = (idRevision: string) =>
+    setRevision((actual) => {
+      const nuevo = new Set(actual);
+      if (nuevo.has(idRevision)) {
+        nuevo.delete(idRevision);
+      } else {
+        nuevo.add(idRevision);
+      }
+      return nuevo;
+    });
 
   return (
     <div className="editor">
@@ -196,13 +237,72 @@ export function EditorFragmentos() {
 
         <div className="editor__cuerpo">
           <section className="editor__lienzo" aria-label="Fragmentos sobre la imagen">
+            <div className="editor__barra" role="toolbar" aria-label="Herramientas de edición">
+              {HERRAMIENTAS.map(({ valor, texto, tecla, icono }) => (
+                <button
+                  key={valor}
+                  type="button"
+                  className={`editor__herramienta${herramienta === valor ? " editor__herramienta--activa" : ""}`}
+                  aria-pressed={herramienta === valor}
+                  onClick={() => elegirHerramienta(valor)}
+                  title={`${texto} (${tecla})`}
+                >
+                  <Icono nombre={icono} />
+                  {texto}
+                  <kbd className="editor__tecla">{tecla}</kbd>
+                </button>
+              ))}
+              <span className="editor__separador" />
+              <button
+                type="button"
+                className="editor__herramienta"
+                onClick={unirSeleccion}
+                disabled={ocupado || seleccionados.size < 2}
+                title="Unir fragmentos seleccionados (U)"
+              >
+                <Icono nombre="unir" />
+                Unir{seleccionados.size >= 2 ? ` (${seleccionados.size})` : ""}
+                <kbd className="editor__tecla">U</kbd>
+              </button>
+              <button
+                type="button"
+                className="editor__herramienta editor__herramienta--peligro"
+                onClick={borrarSeleccion}
+                disabled={ocupado || seleccionados.size === 0}
+                title="Eliminar fragmentos seleccionados (Supr)"
+              >
+                <Icono nombre="papelera" />
+                Eliminar
+                <kbd className="editor__tecla">Supr</kbd>
+              </button>
+              <button
+                type="button"
+                className="editor__herramienta"
+                onClick={() => void edicion.deshacer()}
+                disabled={ocupado || !edicion.puedeDeshacer}
+                title="Deshacer (Ctrl + Z)"
+              >
+                <Icono nombre="deshacer" />
+                Deshacer
+                <kbd className="editor__tecla">Ctrl Z</kbd>
+              </button>
+              <label className="editor__casilla">
+                <input
+                  type="checkbox"
+                  checked={mostrarContornos}
+                  onChange={(e) => setMostrarContornos(e.target.checked)}
+                />
+                Contornos
+              </label>
+            </div>
+
             {detalle && (
               <LienzoFragmentos
                 urlImagen={urlImagen(id)}
                 anchoImg={detalle.imagen.ancho_px}
                 altoImg={detalle.imagen.alto_px}
                 fragmentos={fragmentos}
-                rangoPorId={rangoPorId}
+                colorPorId={colorPorId}
                 seleccionados={seleccionados}
                 regionExcluida={detalle.region_excluida?.poligono ?? null}
                 herramienta={herramienta}
@@ -214,117 +314,112 @@ export function EditorFragmentos() {
                 onCerrarTrazo={cerrarDibujo}
               />
             )}
-            {edicion.segmentando && (
-              <p className="editor__aviso" role="status">
-                Segmentando la imagen con el modelo de IA... puede tardar unos segundos.
-              </p>
-            )}
-          </section>
 
-          <aside className="editor__panel">
-            <div className="editor__encabezado-panel">
-              <h1 className="editor__nombre">{detalle?.nombre ?? "Cargando..."}</h1>
-              {detalle && <EtiquetaEstado estado={fragmentos.length > 0 ? "SEGMENTADO" : detalle.estado} />}
-            </div>
-
-            <section className="editor__seccion">
-              <h2 className="editor__subtitulo">1. Segmentación automática</h2>
-              <Boton onClick={pedirSegmentacion} disabled={!detalle || ocupado}>
-                {edicion.segmentando ? "Segmentando..." : fragmentos.length > 0 ? "Volver a segmentar" : "Segmentar con IA"}
-              </Boton>
-            </section>
-
-            <section className="editor__seccion">
-              <h2 className="editor__subtitulo">2. Revisión y corrección</h2>
-              <div className="editor__herramientas" role="group" aria-label="Herramienta">
-                {(
-                  [
-                    ["seleccionar", "Seleccionar", "V"],
-                    ["dibujar", "Dibujar", "D"],
-                    ["dividir", "Dividir", "C"],
-                  ] as const
-                ).map(([valor, texto, tecla]) => (
-                  <button
-                    key={valor}
-                    type="button"
-                    className={`editor__herramienta${herramienta === valor ? " editor__herramienta--activa" : ""}`}
-                    aria-pressed={herramienta === valor}
-                    onClick={() => elegirHerramienta(valor)}
-                    title={`Atajo: ${tecla}`}
-                  >
-                    {texto}
-                  </button>
-                ))}
-              </div>
-              <p className="editor__ayuda">{AYUDAS[herramienta]}</p>
-
-              <div className="editor__fila">
-                <Boton
-                  variante="secundario"
-                  onClick={unirSeleccion}
-                  disabled={ocupado || seleccionados.size < 2}
-                  title="Atajo: U"
-                >
-                  Unir ({seleccionados.size})
-                </Boton>
-                <Boton
-                  variante="peligro"
-                  onClick={borrarSeleccion}
-                  disabled={ocupado || seleccionados.size === 0}
-                  title="Atajo: Supr"
-                >
-                  Borrar
-                </Boton>
-                <Boton
-                  variante="secundario"
-                  onClick={() => void edicion.deshacer()}
-                  disabled={ocupado || !edicion.puedeDeshacer}
-                  title="Atajo: Ctrl + Z"
-                >
-                  Deshacer
-                </Boton>
-              </div>
+            <div className="editor__ayuda-lienzo" role="status">
+              <span className="editor__chip-modo">{NOMBRES[herramienta]}</span>
+              <span className="editor__ayuda-texto">
+                {edicion.segmentando
+                  ? "Segmentando la imagen con el modelo de IA... puede tardar unos segundos."
+                  : AYUDAS[herramienta]}
+              </span>
               {herramienta === "dibujar" && trazo.length > 0 && (
-                <div className="editor__fila">
+                <span className="editor__fila">
                   <Boton onClick={cerrarDibujo} disabled={sinRepetidos(trazo).length < 3}>
                     Terminar fragmento
                   </Boton>
                   <Boton variante="secundario" onClick={() => setTrazo([])}>
                     Cancelar
                   </Boton>
-                </div>
+                </span>
               )}
-              <label className="editor__casilla">
-                <input
-                  type="checkbox"
-                  checked={mostrarContornos}
-                  onChange={(e) => setMostrarContornos(e.target.checked)}
-                />
-                Mostrar contornos
-              </label>
-              <p className={`editor__guardado editor__guardado--${edicion.estadoGuardado}`} role="status">
-                {textoGuardado}
-              </p>
+            </div>
+          </section>
+
+          <aside className="editor__panel">
+            <section className="editor__seccion" aria-labelledby="titulo-segmentacion">
+              <div className="editor__cabecera">
+                <span className={`editor__marca${segmentado ? " editor__marca--hecha" : " editor__marca--activa"}`}>
+                  {segmentado ? <Icono nombre="hecho" /> : "1"}
+                </span>
+                <h2 id="titulo-segmentacion" className="editor__subtitulo">
+                  Segmentación automática
+                </h2>
+                <Boton
+                  variante={segmentado ? "secundario" : "primario"}
+                  onClick={pedirSegmentacion}
+                  disabled={!detalle || ocupado || modeloDisponible === false}
+                >
+                  {edicion.segmentando ? "Segmentando..." : segmentado ? "Reprocesar" : "Segmentar con IA"}
+                </Boton>
+              </div>
+              {modeloDisponible === false ? (
+                <p className="editor__aviso" role="status">
+                  Modelo de IA no instalado. Copie <code>best.pt</code> en <code>backend/modelos/</code> y reinicie el
+                  backend. Mientras tanto puede dibujar los fragmentos a mano.
+                </p>
+              ) : (
+                <p className="editor__ayuda">
+                  YOLOv11m-seg ·{" "}
+                  {segmentado ? (
+                    <>
+                      <span className="cifra">{fragmentos.length}</span> fragmentos
+                    </>
+                  ) : (
+                    "sin procesar"
+                  )}
+                </p>
+              )}
             </section>
 
-            <section className="editor__seccion" aria-live="polite">
-              <h2 className="editor__subtitulo">Métricas en vivo</h2>
+            <section
+              className={`editor__seccion${segmentado ? " editor__seccion--activa" : ""}`}
+              aria-labelledby="titulo-control"
+            >
+              <div className="editor__cabecera">
+                <span className={`editor__marca${segmentado ? " editor__marca--activa" : ""}`}>2</span>
+                <h2 id="titulo-control" className="editor__subtitulo">
+                  Control de calidad
+                </h2>
+                <span className="editor__ayuda cifra">
+                  {revisados} / {REVISIONES.length}
+                </span>
+              </div>
+              {REVISIONES.map((r) => (
+                <label key={r.id} className="editor__revision">
+                  <input type="checkbox" checked={revision.has(r.id)} onChange={() => alternarRevision(r.id)} />
+                  <span>
+                    <strong>{r.titulo}</strong>
+                    <span className="editor__ayuda">{r.detalle}</span>
+                  </span>
+                </label>
+              ))}
+            </section>
+
+            <section className="editor__seccion" aria-labelledby="titulo-indicadores" aria-live="polite">
+              <div className="editor__cabecera">
+                <h2 id="titulo-indicadores" className="editor__subtitulo">
+                  Indicadores preliminares
+                </h2>
+                <span className={`editor__guardado editor__guardado--${edicion.estadoGuardado}`} role="status">
+                  {textoGuardado}
+                </span>
+              </div>
               <dl className="editor__metricas">
                 <div>
-                  <dt>Fragmentos</dt>
-                  <dd>{fragmentos.length}</dd>
+                  <dt>N</dt>
+                  <dd className="cifra">{fragmentos.length}</dd>
                 </div>
                 <div>
-                  <dt>D50</dt>
-                  <dd>{resultados ? formatearMm(resultados.d50) : "—"}</dd>
+                  <dt>D50 (mm)</dt>
+                  <dd className="cifra">{resultados ? formatearNumero(resultados.d50, 0) : "—"}</dd>
                 </div>
                 <div>
-                  <dt>D80</dt>
-                  <dd>{resultados ? formatearMm(resultados.d80) : "—"}</dd>
+                  <dt>D80 (mm)</dt>
+                  <dd className="cifra">{resultados ? formatearNumero(resultados.d80, 0) : "—"}</dd>
                 </div>
                 <div>
-                  <dt>Índice n</dt>
-                  <dd>{resultados ? formatearNumero(resultados.indice_n, 2) : "—"}</dd>
+                  <dt>n</dt>
+                  <dd className="cifra">{resultados ? formatearNumero(resultados.indice_n, 2) : "—"}</dd>
                 </div>
               </dl>
               {resultados ? (
@@ -338,8 +433,13 @@ export function EditorFragmentos() {
               <Boton variante="secundario" onClick={() => navigate(`/analisis/${id}/calibracion`)}>
                 Atrás
               </Boton>
-              <Boton onClick={() => navigate(`/analisis/${id}/resultados`)} disabled={!resultados || ocupado}>
+              <Boton
+                className="editor__continuar"
+                onClick={() => navigate(`/analisis/${id}/resultados`)}
+                disabled={!resultados || ocupado}
+              >
                 Ver resultados
+                <Icono nombre="siguiente" />
               </Boton>
             </div>
           </aside>

@@ -1,9 +1,15 @@
 """Dependencias de FastAPI: puertos (tomados de `app.state`) y casos de uso."""
+
 from typing import Annotated
 
 from fastapi import Depends, Request
 
 from app.aplicacion.casos_de_uso.calibrar_escala import CalibrarEscala
+from app.aplicacion.casos_de_uso.configurar_rangos import (
+    GuardarConfiguracionRangos,
+    ObtenerConfiguracionRangos,
+    RestablecerConfiguracionRangos,
+)
 from app.aplicacion.casos_de_uso.crear_analisis import CrearAnalisis
 from app.aplicacion.casos_de_uso.editar_fragmentos import EditarFragmentos
 from app.aplicacion.casos_de_uso.eliminar_analisis import EliminarAnalisis
@@ -19,6 +25,7 @@ from app.aplicacion.puertos import (
     AlmacenImagenes,
     InspectorImagenes,
     RepositorioAnalisis,
+    RepositorioConfiguracion,
     Segmentador,
 )
 
@@ -43,10 +50,16 @@ def obtener_segmentador(request: Request) -> Segmentador:
     return request.app.state.segmentador  # type: ignore[no-any-return]
 
 
+def obtener_repositorio_configuracion(request: Request) -> RepositorioConfiguracion:
+    """Repositorio de configuración (rangos de tamaño y colores)."""
+    return request.app.state.repositorio_configuracion  # type: ignore[no-any-return]
+
+
 Repositorio = Annotated[RepositorioAnalisis, Depends(obtener_repositorio)]
 Almacen = Annotated[AlmacenImagenes, Depends(obtener_almacen)]
 Inspector = Annotated[InspectorImagenes, Depends(obtener_inspector)]
 SegmentadorDep = Annotated[Segmentador, Depends(obtener_segmentador)]
+RepoConfiguracion = Annotated[RepositorioConfiguracion, Depends(obtener_repositorio_configuracion)]
 
 
 def caso_crear(repo: Repositorio, almacen: Almacen, inspector: Inspector) -> CrearAnalisis:
@@ -106,6 +119,21 @@ def caso_editar_fragmentos(repo: Repositorio) -> EditarFragmentos:
     return EditarFragmentos(repo)
 
 
-def caso_resultados(repo: Repositorio) -> ObtenerResultados:
+def caso_resultados(repo: Repositorio, configuracion: RepoConfiguracion) -> ObtenerResultados:
     """Caso de uso ObtenerResultados."""
-    return ObtenerResultados(repo)
+    return ObtenerResultados(repo, configuracion)
+
+
+def caso_obtener_rangos(configuracion: RepoConfiguracion) -> ObtenerConfiguracionRangos:
+    """Caso de uso ObtenerConfiguracionRangos."""
+    return ObtenerConfiguracionRangos(configuracion)
+
+
+def caso_guardar_rangos(configuracion: RepoConfiguracion) -> GuardarConfiguracionRangos:
+    """Caso de uso GuardarConfiguracionRangos."""
+    return GuardarConfiguracionRangos(configuracion)
+
+
+def caso_restablecer_rangos(configuracion: RepoConfiguracion) -> RestablecerConfiguracionRangos:
+    """Caso de uso RestablecerConfiguracionRangos."""
+    return RestablecerConfiguracionRangos(configuracion)

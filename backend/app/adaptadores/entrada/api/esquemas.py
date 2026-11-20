@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.dominio.configuracion import ConfiguracionRangos
 from app.dominio.modelo import Analisis, Fragmento, Poligono, ReporteGranulometrico
 
 Coordenada = Annotated[float, Field(allow_inf_nan=False)]
@@ -113,11 +114,22 @@ class PuntoCurvaEsquema(BaseModel):
 
 
 class RangoEsquema(BaseModel):
-    """Rango de tamaño para colorear fragmentos; el frontend asigna el color por índice."""
+    """Rango de tamaño con su nombre y color configurados (RF-06, RF-14)."""
 
     indice: int
+    nombre: str
+    color: str
     limite_inferior_mm: float
     limite_superior_mm: float | None
+
+
+class ConfiguracionRangosEsquema(BaseModel):
+    """Configuración de rangos: N cortes definen N + 1 rangos con nombre y color."""
+
+    modo: Literal["RELATIVO", "ABSOLUTO"]
+    cortes: list[Annotated[float, Field(allow_inf_nan=False)]]
+    nombres: list[str]
+    colores: list[str]
 
 
 class ClaseHistogramaEsquema(BaseModel):
@@ -219,6 +231,8 @@ def a_resultados(reporte: ReporteGranulometrico) -> ResultadosEsquema:
         rangos=[
             RangoEsquema(
                 indice=i,
+                nombre=reporte.nombres_rangos[i],
+                color=reporte.colores_rangos[i],
                 limite_inferior_mm=rango.limite_inferior_mm,
                 limite_superior_mm=rango.limite_superior_mm,
             )
@@ -269,4 +283,14 @@ def a_detalle(analisis: Analisis) -> AnalisisDetalle:
         if analisis.region_excluida is None
         else RegionExcluidaEsquema(poligono=_puntos(analisis.region_excluida.poligono)),
         fragmentos=a_fragmentos(analisis, analisis.fragmentos),
+    )
+
+
+def a_configuracion(configuracion: ConfiguracionRangos) -> ConfiguracionRangosEsquema:
+    """Convierte la configuración del dominio."""
+    return ConfiguracionRangosEsquema(
+        modo=configuracion.modo.value,  # type: ignore[arg-type]
+        cortes=list(configuracion.cortes),
+        nombres=list(configuracion.nombres),
+        colores=list(configuracion.colores),
     )

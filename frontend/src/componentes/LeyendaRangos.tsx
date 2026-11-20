@@ -2,9 +2,7 @@ import type { FragmentoMedido, RangoTamano } from "../api/tipos";
 import { formatearNumero } from "../utilidades/formato";
 import "./LeyendaRangos.css";
 
-const NOMBRES = ["Finos", "Pequeños", "Medianos", "Gruesos", "Sobretamaño"];
-
-/** Texto del intervalo de un rango, p. ej. "< 120 mm", "120–340 mm" o "> 900 mm". */
+/** Texto del intervalo de un rango, p. ej. "< 120 mm", "120–340 mm" o "≥ 900 mm". */
 export function textoRango(rango: RangoTamano): string {
   if (rango.limite_inferior_mm <= 0 && rango.limite_superior_mm !== null) {
     return `< ${formatearNumero(rango.limite_superior_mm, 0)} mm`;
@@ -15,7 +13,10 @@ export function textoRango(rango: RangoTamano): string {
   return `${formatearNumero(rango.limite_inferior_mm, 0)}–${formatearNumero(rango.limite_superior_mm, 0)} mm`;
 }
 
-const ETIQUETAS_DX = ["< D20", "D20–D50", "D50–D80", "D80–D90", "≥ D90"];
+/** Color de cada fragmento según su rango (para el lienzo y la vista de resultados). */
+export function colorPorFragmento(rangos: RangoTamano[], fragmentos: FragmentoMedido[]): Map<string, string> {
+  return new Map(fragmentos.map((f) => [f.id, rangos[f.indice_rango]?.color ?? ""]));
+}
 
 interface Props {
   rangos: RangoTamano[];
@@ -30,11 +31,8 @@ export function LeyendaRangos({ rangos, fragmentos }: Props) {
         const cantidad = fragmentos.filter((f) => f.indice_rango === rango.indice).length;
         return (
           <li key={rango.indice} className="leyenda-rangos__item">
-            <span className={`leyenda-rangos__muestra leyenda-rangos__muestra--${rango.indice}`} />
-            <span className="leyenda-rangos__nombre">
-              {NOMBRES[rango.indice] ?? `Rango ${rango.indice + 1}`}{" "}
-              <span className="leyenda-rangos__dx">({ETIQUETAS_DX[rango.indice]})</span>
-            </span>
+            <span className="leyenda-rangos__muestra" style={{ background: rango.color }} />
+            <span className="leyenda-rangos__nombre">{rango.nombre}</span>
             <span className="leyenda-rangos__intervalo">{textoRango(rango)}</span>
             <span className="leyenda-rangos__cantidad">{cantidad}</span>
           </li>

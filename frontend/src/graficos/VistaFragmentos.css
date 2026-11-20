@@ -18,12 +18,6 @@
   fill-opacity: var(--alfa-relleno-seleccionado);
 }
 
-.vista-fragmentos__poligono--0 { fill: var(--color-rango-0); stroke: var(--color-rango-0); }
-.vista-fragmentos__poligono--1 { fill: var(--color-rango-1); stroke: var(--color-rango-1); }
-.vista-fragmentos__poligono--2 { fill: var(--color-rango-2); stroke: var(--color-rango-2); }
-.vista-fragmentos__poligono--3 { fill: var(--color-rango-3); stroke: var(--color-rango-3); }
-.vista-fragmentos__poligono--4 { fill: var(--color-rango-4); stroke: var(--color-rango-4); }
-
 .vista-fragmentos__poligono--sin-rango {
   fill: var(--color-fragmento);
   stroke: var(--color-fragmento);

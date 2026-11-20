@@ -20,4 +20,7 @@ Cada tarea la redacta el tech lead, la implementa Claude Code y se cierra con un
 | T-007 | Segmentación automática con YOLOv11m-seg (adaptador, caso de uso, API, Docker) | T-004 | Implementada, pendiente de revisión |
 | T-008 | Editor de fragmentos (borrar, dibujar, unir, dividir), resultados (Dx, n, curva, histograma, rangos) e informe PDF | T-007 | Implementada, pendiente de revisión |
 
-Pendiente: exportación CSV (HU-09, Sprint 4).
+| T-009 | Exportación CSV (RF-09), configuración de rangos y colores (RF-14), despliegue sin `.env` (RNF-06) y espacio para el modelo | T-008 | Implementada, pendiente de revisión |
+| T-010 | Rediseño de la interfaz (uso docente y profesional): tema, encabezado, etapas, iconos, zoom del editor, definiciones de indicadores | T-009 | Implementada, pendiente de revisión |
+
+Pendiente: RF-13 (usuarios y roles, complementario).

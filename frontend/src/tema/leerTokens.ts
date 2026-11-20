@@ -45,8 +45,6 @@ export function conAlfa(hex: string, alfa: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alfa})`;
 }
 
-export const NUMERO_RANGOS = 5;
-
 export interface EstiloFragmentos {
   colorFragmento: string;
   colorSeleccionado: string;
@@ -55,7 +53,6 @@ export interface EstiloFragmentos {
   colorVertice: string;
   alfaRelleno: number;
   alfaSeleccionado: number;
-  coloresRango: string[];
   grosor: number;
   radioVertice: number;
   punteado: number[];
@@ -70,7 +67,6 @@ export function leerEstiloFragmentos(): EstiloFragmentos {
     colorVertice: leerToken("--color-vertice"),
     alfaRelleno: leerNumero("--alfa-relleno-fragmento"),
     alfaSeleccionado: leerNumero("--alfa-relleno-seleccionado"),
-    coloresRango: Array.from({ length: NUMERO_RANGOS }, (_, i) => leerToken(`--color-rango-${i}`)),
     grosor: leerNumero("--trazo-grosor"),
     radioVertice: leerNumero("--vertice-radio"),
     punteado: leerLista("--trazo-punteado"),

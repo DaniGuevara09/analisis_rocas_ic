@@ -10,6 +10,7 @@ from app.adaptadores.entrada.api.dependencias import (
     obtener_almacen,
     obtener_inspector,
     obtener_repositorio,
+    obtener_repositorio_configuracion,
     obtener_segmentador,
 )
 from app.adaptadores.salida.segmentacion.no_disponible import SegmentadorNoDisponible
@@ -19,6 +20,7 @@ from tests.unit.aplicacion.fakes import (
     CABECERA_JPG,
     AlmacenFalso,
     InspectorFalso,
+    RepositorioConfiguracionFalso,
     RepositorioFalso,
     SegmentadorFalso,
 )
@@ -51,6 +53,8 @@ def cliente(segmentador: SegmentadorFalso) -> Iterator[TestClient]:
     app.dependency_overrides[obtener_almacen] = lambda: almacen
     app.dependency_overrides[obtener_inspector] = lambda: InspectorFalso(1600, 1200)
     app.dependency_overrides[obtener_segmentador] = lambda: segmentador
+    configuracion = RepositorioConfiguracionFalso()
+    app.dependency_overrides[obtener_repositorio_configuracion] = lambda: configuracion
     yield TestClient(app)
     app.dependency_overrides.clear()
 

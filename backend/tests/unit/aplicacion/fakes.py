@@ -1,6 +1,7 @@
 """Adaptadores falsos en memoria para probar los casos de uso."""
 from uuid import UUID
 
+from app.dominio.configuracion import ConfiguracionRangos
 from app.dominio.errores import FormatoImagenNoValido
 from app.dominio.modelo import Analisis, Poligono
 
@@ -77,3 +78,16 @@ class SegmentadorFalso:
         self.llamadas += 1
         self.ultima_imagen = imagen
         return list(self.poligonos)
+
+
+class RepositorioConfiguracionFalso:
+    """Configuración en memoria (None = por defecto)."""
+
+    def __init__(self) -> None:
+        self.rangos: ConfiguracionRangos | None = None
+
+    def obtener_rangos(self) -> ConfiguracionRangos | None:
+        return self.rangos
+
+    def guardar_rangos(self, configuracion: ConfiguracionRangos | None) -> None:
+        self.rangos = configuracion

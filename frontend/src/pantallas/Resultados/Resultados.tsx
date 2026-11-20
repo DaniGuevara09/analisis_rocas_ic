@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { obtenerAnalisis, obtenerResultados, urlImagen } from "../../api/analisis";
+import { obtenerAnalisis, obtenerResultados, urlCsv, urlImagen } from "../../api/analisis";
 import { mensajeDeError } from "../../api/errores";
 import type { AnalisisDetalle, Resultados as DatosResultados } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
+import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
-import { LeyendaRangos, textoRango } from "../../componentes/LeyendaRangos";
+import { colorPorFragmento, LeyendaRangos, textoRango } from "../../componentes/LeyendaRangos";
 import { MensajeError } from "../../componentes/MensajeError";
 import { GraficoCurva } from "../../graficos/GraficoCurva";
 import { GraficoHistograma } from "../../graficos/GraficoHistograma";
 import { VistaFragmentos } from "../../graficos/VistaFragmentos";
 import { formatearFecha, formatearMm, formatearNumero } from "../../utilidades/formato";
+import { type ClaveIndicador, DEFINICIONES, ORDEN_INDICADORES } from "./definiciones";
 import "./Resultados.css";
 
 export function Resultados() {
@@ -40,8 +42,8 @@ export function Resultados() {
       .catch((e: unknown) => setError(mensajeDeError(e)));
   }, [id]);
 
-  const rangoPorId = useMemo(
-    () => new Map((resultados?.fragmentos ?? []).map((f) => [f.id, f.indice_rango])),
+  const colorPorId = useMemo(
+    () => colorPorFragmento(resultados?.rangos ?? [], resultados?.fragmentos ?? []),
     [resultados],
   );
   const ordenados = useMemo(
@@ -49,16 +51,10 @@ export function Resultados() {
     [resultados],
   );
 
-  const indicadores = resultados
-    ? ([
-        ["D20", formatearMm(resultados.d20)],
-        ["D50", formatearMm(resultados.d50)],
-        ["D60", formatearMm(resultados.d60)],
-        ["D80", formatearMm(resultados.d80)],
-        ["D90", formatearMm(resultados.d90)],
-        ["Índice n", formatearNumero(resultados.indice_n, 2)],
-      ] as const)
-    : [];
+  const [seleccion, setSeleccion] = useState<ClaveIndicador>("d50");
+  const definicion = DEFINICIONES[seleccion];
+  const valorDe = (clave: ClaveIndicador): string =>
+    resultados ? (clave === "indice_n" ? formatearNumero(resultados.indice_n, 2) : formatearMm(resultados[clave])) : "—";
 
   return (
     <div className="resultados">
@@ -88,8 +84,17 @@ export function Resultados() {
             <Boton variante="secundario" onClick={() => navigate(`/analisis/${id}/editor`)}>
               Volver al editor
             </Boton>
+            <a
+              className={`boton boton--secundario${resultados ? "" : " resultados__enlace-boton--inactivo"}`}
+              href={resultados ? urlCsv(id) : undefined}
+              download
+            >
+              <Icono nombre="descargar" />
+              Exportar CSV
+            </a>
             <Boton onClick={exportarPdf} disabled={!resultados}>
-              Exportar PDF
+              <Icono nombre="descargar" />
+              Informe PDF
             </Boton>
           </div>
         </div>
@@ -97,28 +102,64 @@ export function Resultados() {
         {resultados && detalle && (
           <>
             <section className="resultados__indicadores" aria-label="Indicadores granulométricos">
-              {indicadores.map(([nombre, valor]) => (
-                <div key={nombre} className="resultados__indicador">
-                  <span className="resultados__indicador-nombre">{nombre}</span>
-                  <span className="resultados__indicador-valor">{valor}</span>
-                </div>
+              {ORDEN_INDICADORES.map((clave) => (
+                <button
+                  key={clave}
+                  type="button"
+                  className={`resultados__indicador${seleccion === clave ? " resultados__indicador--activo" : ""}`}
+                  aria-pressed={seleccion === clave}
+                  onClick={() => setSeleccion(clave)}
+                >
+                  <span className="resultados__indicador-nombre">{DEFINICIONES[clave].nombre}</span>
+                  <span className="resultados__indicador-valor cifra">{valorDe(clave)}</span>
+                </button>
               ))}
             </section>
 
             <div className="resultados__graficos">
               <section className="resultados__tarjeta">
-                <h2 className="resultados__subtitulo">Curva granulométrica</h2>
+                <h2 className="resultados__subtitulo">Curva granulométrica acumulada</h2>
                 <GraficoCurva
                   curva={resultados.curva}
-                  referencias={[
-                    { etiqueta: "D50", diametro_mm: resultados.d50, pasante_pct: 50 },
-                    { etiqueta: "D80", diametro_mm: resultados.d80, pasante_pct: 80 },
-                  ]}
+                  referencias={
+                    definicion.pasante_pct === null || seleccion === "indice_n"
+                      ? []
+                      : [{ etiqueta: definicion.nombre, diametro_mm: resultados[seleccion], pasante_pct: definicion.pasante_pct }]
+                  }
                 />
               </section>
+              <section className="resultados__tarjeta resultados__definicion no-imprimir" aria-live="polite">
+                <p className="resultados__sobretitulo resultados__sobretitulo--resaltado">Indicador seleccionado</p>
+                <h2 className="resultados__definicion-titulo">
+                  {definicion.nombre} <span className="cifra">= {valorDe(seleccion)}</span>
+                </h2>
+                <div className="resultados__bloque">
+                  <span className="resultados__rotulo">Definición</span>
+                  <p className="resultados__parrafo">{definicion.definicion}</p>
+                </div>
+                <div className="resultados__bloque resultados__bloque--separado">
+                  <span className="resultados__rotulo">Aplicación</span>
+                  <p className="resultados__parrafo">{definicion.aplicacion}</p>
+                </div>
+              </section>
+            </div>
+
+            <div className="resultados__graficos">
               <section className="resultados__tarjeta">
-                <h2 className="resultados__subtitulo">Histograma</h2>
+                <h2 className="resultados__subtitulo">Histograma de frecuencias</h2>
                 <GraficoHistograma clases={resultados.histograma} />
+              </section>
+              <section className="resultados__tarjeta">
+                <h2 className="resultados__subtitulo">Modelo de distribución</h2>
+                <p className="resultados__ecuacion cifra">
+                  P(x) = 1 − exp[−(x / x<sub>c</sub>)<sup>n</sup>]
+                </p>
+                <dl className="resultados__parametros">
+                  <dt>Índice de uniformidad, n</dt>
+                  <dd className="cifra">{formatearNumero(resultados.indice_n, 2)}</dd>
+                  <dt>Fragmentos medidos, N</dt>
+                  <dd className="cifra">{resultados.numero_fragmentos}</dd>
+                </dl>
               </section>
             </div>
 
@@ -130,13 +171,16 @@ export function Resultados() {
                   anchoImg={detalle.imagen.ancho_px}
                   altoImg={detalle.imagen.alto_px}
                   fragmentos={detalle.fragmentos}
-                  rangoPorId={rangoPorId}
+                  colorPorId={colorPorId}
                 />
               </div>
               <div className="resultados__lateral">
                 <h3 className="resultados__subtitulo">Leyenda</h3>
+                <p className="resultados__nota no-imprimir">
+                  Los rangos y colores se cambian en <Link to="/configuracion">Configuración</Link>.
+                </p>
                 <LeyendaRangos rangos={resultados.rangos} fragmentos={resultados.fragmentos} />
-                <h3 className="resultados__subtitulo">Supuestos del cálculo</h3>
+                <h3 className="resultados__subtitulo">Supuestos y limitaciones</h3>
                 <ul className="resultados__supuestos">
                   {resultados.supuestos.map((s) => (
                     <li key={s}>{s}</li>

@@ -2,14 +2,14 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { RangoTamano } from "../api/tipos";
-import { LeyendaRangos, textoRango } from "./LeyendaRangos";
+import { colorPorFragmento, LeyendaRangos, textoRango } from "./LeyendaRangos";
 
 const RANGOS: RangoTamano[] = [
-  { indice: 0, limite_inferior_mm: 0, limite_superior_mm: 100 },
-  { indice: 1, limite_inferior_mm: 100, limite_superior_mm: 250 },
-  { indice: 2, limite_inferior_mm: 250, limite_superior_mm: 400 },
-  { indice: 3, limite_inferior_mm: 400, limite_superior_mm: 600 },
-  { indice: 4, limite_inferior_mm: 600, limite_superior_mm: null },
+  { indice: 0, nombre: "Finos", color: "#86b6ef", limite_inferior_mm: 0, limite_superior_mm: 100 },
+  { indice: 1, nombre: "Pequeños", color: "#5598e7", limite_inferior_mm: 100, limite_superior_mm: 250 },
+  { indice: 2, nombre: "Medianos", color: "#2a78d6", limite_inferior_mm: 250, limite_superior_mm: 400 },
+  { indice: 3, nombre: "Gruesos", color: "#1c5cab", limite_inferior_mm: 400, limite_superior_mm: 600 },
+  { indice: 4, nombre: "Sobretamaño", color: "#104281", limite_inferior_mm: 600, limite_superior_mm: null },
 ];
 
 describe("textoRango", () => {
@@ -38,5 +38,12 @@ describe("LeyendaRangos", () => {
     expect(items[0]).toHaveTextContent("2");
     expect(items[4]).toHaveTextContent("Sobretamaño");
     expect(items[4]).toHaveTextContent("1");
+  });
+});
+
+describe("colorPorFragmento", () => {
+  it("asigna a cada fragmento el color configurado de su rango", () => {
+    const colores = colorPorFragmento(RANGOS, [{ id: "a", diametro_equivalente_mm: 700, indice_rango: 4 }]);
+    expect(colores.get("a")).toBe("#104281");
   });
 });

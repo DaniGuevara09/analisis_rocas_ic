@@ -123,3 +123,23 @@ def test_generar_reporte_con_menos_de_tres_fragmentos_lanza_datos_insuficientes(
 def test_generar_reporte_sin_calibracion_lanza_escala_no_calibrada() -> None:
     with pytest.raises(EscalaNoCalibrada):
         analisis_sin_calibrar().generar_reporte()
+
+
+def test_generar_reporte_usa_la_configuracion_de_rangos() -> None:
+    from app.dominio.configuracion import ConfiguracionRangos, ModoRangos
+
+    analisis = analisis_calibrado()
+    analisis.registrar_fragmentos(
+        [cuadrado(0, 0, 10), cuadrado(20, 0, 20), cuadrado(50, 0, 40), cuadrado(100, 0, 80)],
+        OrigenFragmento.MODELO,
+    )
+    configuracion = ConfiguracionRangos(
+        ModoRangos.ABSOLUTO, (10.0,), ("Chicos", "Grandes"), ("#ffffff", "#000000")
+    )
+    reporte = analisis.generar_reporte(configuracion)
+    assert len(reporte.rangos) == 2
+    assert reporte.rangos[0].limite_superior_mm == 10.0
+    assert reporte.nombres_rangos == ("Chicos", "Grandes")
+    assert reporte.colores_rangos == ("#ffffff", "#000000")
+    # diámetros: 5,6 / 11,3 / 22,6 / 45,1 mm (factor 0,5) -> uno chico y tres grandes
+    assert [m.indice_rango for m in reporte.fragmentos] == [0, 1, 1, 1]

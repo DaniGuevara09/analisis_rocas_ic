@@ -21,13 +21,6 @@
   border-radius: var(--radio-pequeno);
 }
 
-.leyenda-rangos__muestra--0 { background: var(--color-rango-0); }
-.leyenda-rangos__muestra--1 { background: var(--color-rango-1); }
-.leyenda-rangos__muestra--2 { background: var(--color-rango-2); }
-.leyenda-rangos__muestra--3 { background: var(--color-rango-3); }
-.leyenda-rangos__muestra--4 { background: var(--color-rango-4); }
-
-.leyenda-rangos__dx,
 .leyenda-rangos__intervalo {
   color: var(--color-texto-secundario);
 }

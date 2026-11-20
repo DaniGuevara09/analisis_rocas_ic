@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Image as ImagenKonva, Layer, Line, Stage } from "react-konva";
 
 import type { Fragmento, Punto } from "../api/tipos";
+import { Icono } from "../componentes/Icono";
 import { conAlfa, leerEstiloFragmentos } from "../tema/leerTokens";
 import { aImagen, aPantalla, aplanar, escalaAjuste, limitar } from "./geometria";
 import { useImagen } from "./useImagen";
@@ -14,14 +15,15 @@ export type Herramienta = "seleccionar" | "dibujar" | "dividir";
 const ZOOM_MINIMO = 1;
 const ZOOM_MAXIMO = 12;
 const FACTOR_RUEDA = 1.15;
+const FACTOR_BOTON = 1.5;
 
 interface Props {
   urlImagen: string;
   anchoImg: number;
   altoImg: number;
   fragmentos: Fragmento[];
-  /** Índice de rango de tamaño por id (si ya hay resultados). */
-  rangoPorId: Map<string, number>;
+  /** Color del rango de tamaño de cada fragmento (si ya hay resultados). */
+  colorPorId: Map<string, string>;
   seleccionados: Set<string>;
   regionExcluida: Punto[] | null;
   herramienta: Herramienta;
@@ -47,13 +49,13 @@ interface Etiqueta {
   y: number;
 }
 
-/** Lienzo del editor: zoom con la rueda, arrastre para moverse y coordenadas en px originales. */
+/** Lienzo del editor: zoom con la rueda o los botones, arrastre para moverse y coordenadas en px originales. */
 export function LienzoFragmentos({
   urlImagen,
   anchoImg,
   altoImg,
   fragmentos,
-  rangoPorId,
+  colorPorId,
   seleccionados,
   regionExcluida,
   herramienta,
@@ -104,22 +106,27 @@ export function LienzoFragmentos({
     }
   };
 
+  /** Cambia el zoom manteniendo fijo el punto `ancla` (coordenadas de pantalla del lienzo). */
+  const aplicarZoom = (ancla: Punto, factor: number) => {
+    setVista((actual) => {
+      const zoom = limitar(actual.zoom * factor, ZOOM_MINIMO, ZOOM_MAXIMO);
+      if (zoom === ZOOM_MINIMO) {
+        return { zoom, x: 0, y: 0 };
+      }
+      const enImagen = { x: (ancla.x - actual.x) / actual.zoom, y: (ancla.y - actual.y) / actual.zoom };
+      return { zoom, x: ancla.x - enImagen.x * zoom, y: ancla.y - enImagen.y * zoom };
+    });
+  };
+
   const alGirarRueda = (evento: KonvaEventObject<WheelEvent>) => {
     evento.evt.preventDefault();
-    const stage = evento.target.getStage();
-    const puntero = stage?.getPointerPosition();
-    if (!stage || !puntero) {
-      return;
+    const puntero = evento.target.getStage()?.getPointerPosition();
+    if (puntero) {
+      aplicarZoom(puntero, evento.evt.deltaY < 0 ? FACTOR_RUEDA : 1 / FACTOR_RUEDA);
     }
-    const factor = evento.evt.deltaY < 0 ? FACTOR_RUEDA : 1 / FACTOR_RUEDA;
-    const zoom = limitar(vista.zoom * factor, ZOOM_MINIMO, ZOOM_MAXIMO);
-    const ancla = { x: (puntero.x - vista.x) / vista.zoom, y: (puntero.y - vista.y) / vista.zoom };
-    setVista(
-      zoom === ZOOM_MINIMO
-        ? { zoom, x: 0, y: 0 }
-        : { zoom, x: puntero.x - ancla.x * zoom, y: puntero.y - ancla.y * zoom },
-    );
   };
+
+  const centro = { x: ancho / 2, y: alto / 2 };
 
   const moverEtiqueta = (id: string, evento: KonvaEventObject<MouseEvent>) => {
     const caja = contenedor.current?.getBoundingClientRect();
@@ -133,8 +140,7 @@ export function LienzoFragmentos({
   };
 
   const colorDe = (id: string): string => {
-    const rango = rangoPorId.get(id);
-    return rango === undefined ? estilo.colorFragmento : estilo.coloresRango[rango] ?? estilo.colorFragmento;
+    return colorPorId.get(id) || estilo.colorFragmento;
   };
 
   const grosor = estilo.grosor / vista.zoom;
@@ -239,14 +245,43 @@ export function LienzoFragmentos({
         </Stage>
       )}
 
-      {vista.zoom > ZOOM_MINIMO && (
-        <button
-          type="button"
-          className="lienzo-fragmentos__ajustar"
-          onClick={() => setVista({ zoom: 1, x: 0, y: 0 })}
-        >
-          Ajustar a la pantalla
-        </button>
+      {ajuste > 0 && (
+        <div className="lienzo-fragmentos__zoom" role="group" aria-label="Zoom de la imagen">
+          <button
+            type="button"
+            className="lienzo-fragmentos__boton-zoom"
+            aria-label="Alejar"
+            title="Alejar"
+            disabled={vista.zoom <= ZOOM_MINIMO}
+            onClick={() => aplicarZoom(centro, 1 / FACTOR_BOTON)}
+          >
+            <Icono nombre="alejar" />
+          </button>
+          <span className="lienzo-fragmentos__porcentaje cifra" aria-live="polite">
+            {Math.round(vista.zoom * 100)} %
+          </span>
+          <button
+            type="button"
+            className="lienzo-fragmentos__boton-zoom"
+            aria-label="Acercar"
+            title="Acercar"
+            disabled={vista.zoom >= ZOOM_MAXIMO}
+            onClick={() => aplicarZoom(centro, FACTOR_BOTON)}
+          >
+            <Icono nombre="acercar" />
+          </button>
+          <span className="lienzo-fragmentos__separador" />
+          <button
+            type="button"
+            className="lienzo-fragmentos__boton-zoom lienzo-fragmentos__boton-zoom--texto"
+            title="Ver la imagen completa"
+            disabled={vista.zoom === ZOOM_MINIMO}
+            onClick={() => setVista({ zoom: 1, x: 0, y: 0 })}
+          >
+            <Icono nombre="ajustar" />
+            Ajustar
+          </button>
+        </div>
       )}
       {etiqueta && !editando && (
         <div className="lienzo-fragmentos__etiqueta" style={{ left: etiqueta.x, top: etiqueta.y }}>

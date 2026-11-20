@@ -1,14 +1,14 @@
 :root {
   /* Colores */
-  --color-fondo: #F4F5F7;
+  --color-fondo: #F3F5F7;
   --color-superficie: #FFFFFF;
-  --color-encabezado: #3E4C59;
+  --color-encabezado: #FFFFFF;
   --color-acento: #1F3A5F;
-  --color-texto: #1E2226;
-  --color-texto-secundario: #6B7178;
-  --color-borde: #D5D9DD;
+  --color-texto: #18212B;
+  --color-texto-secundario: #56606B;
+  --color-borde: #D5DAE0;
   --color-error: #B00020;
-  --color-sobre-encabezado: #FFFFFF;
+  --color-sobre-encabezado: #18212B;
   --color-sobre-acento: #FFFFFF;
   --color-sobre-error: #FFFFFF;
   --color-error-fondo: #FBE9EC;
@@ -18,9 +18,20 @@
   --color-aviso-fondo: #FBF1DC;
   --color-neutro-fondo: #E6E9EC;
   --color-deshabilitado: #B8BDC2;
-  --color-lienzo: #E3E6E9;
+  --color-lienzo: #1B2229;
   --color-superposicion: rgba(30, 34, 38, 0.5);
-  --color-zona-activa: #E8EEF6;
+  --color-zona-activa: #E9EEF5;
+  --color-acento-hover: #172C48;
+  --color-acento-suave: #E9EEF5;
+  --color-borde-fuerte: #C3CAD2;
+  --color-borde-suave: #E4E8EC;
+  --color-fila-hover: #F7F9FB;
+  --color-barra-lienzo: #141A20;
+  --color-sobre-barra-lienzo: #D9DEE3;
+  --color-resaltado: #C2410C;
+  --color-resaltado-fondo: #FDF3EC;
+  --color-chip-modo: #FFB27A;
+  --color-foco: #2A78D6;
 
   /* Trazos del lienzo (Konva) */
   --color-trazo-calibracion: #E8590C;
@@ -39,13 +50,9 @@
   --alfa-relleno-fragmento: 0.3;
   --alfa-relleno-seleccionado: 0.5;
 
-  /* Rangos de tamaño (RF-06): rampa ordinal azul, claro = fino, oscuro = grueso.
-     Validada (monótona, un solo tono, extremo claro >= 2:1 sobre la superficie). */
-  --color-rango-0: #86b6ef;
-  --color-rango-1: #5598e7;
-  --color-rango-2: #2a78d6;
-  --color-rango-3: #1c5cab;
-  --color-rango-4: #104281;
+  /* Los colores de cada rango de tamaño vienen de la configuración (API, RF-14).
+     Este es solo el color inicial de un rango nuevo en la pantalla de Configuración. */
+  --color-rango-nuevo: #104281;
 
   /* Gráficos (curva e histograma) */
   --color-serie: #2a78d6;
@@ -59,6 +66,9 @@
 
   /* Tipografía */
   --fuente-base: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente-cifras: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", monospace;
+  --tamano-texto-mini: 0.75rem;
+  --espaciado-mayusculas: 0.05em;
   --tamano-texto-pequeno: 0.875rem;
   --tamano-texto: 1rem;
   --tamano-subtitulo: 1.125rem;
@@ -76,6 +86,8 @@
   /* Radios */
   --radio-pequeno: 4px;
   --radio-medio: 8px;
+  --radio-control: 6px;
+  --radio-pildora: 999px;
   --radio-redondo: 50%;
 
   /* Bordes */
@@ -100,5 +112,22 @@
   --ancho-grafico-min: 26rem;
   --ancho-lateral-min: 16rem;
   --margen-impresion: 1.5cm;
-  --sombra-flotante: 0 2px 8px rgba(30, 34, 38, 0.18);
+  --ancho-campo-nombre: 12rem;
+  --alto-barra-vista-previa: 2rem;
+  --ancho-columna-principal: 37.5rem;
+  --ancho-texto-max: 70ch;
+  --ancho-porcentaje-zoom: 3.5rem;
+  --tamano-icono-grande: 40px;
+  --interlineado: 1.5;
+  --sombra-flotante: 0 4px 14px rgba(20, 26, 32, 0.25);
+  --alto-control: 44px;
+  --alto-control-compacto: 36px;
+  --tamano-icono: 18px;
+  --alto-barra-etapa: 4px;
+  --tamano-marca-etapa: 28px;
+  --tamano-punto-estado: 8px;
+  --foco-grosor: 3px;
+  --foco-separacion: 2px;
+  --sombra-activa-izquierda: inset 3px 0 0 var(--color-acento);
+  --sombra-activa-abajo: inset 0 -3px 0 var(--color-resaltado);
 }

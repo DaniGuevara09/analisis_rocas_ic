@@ -4,4 +4,21 @@ body {
   color: var(--color-texto);
   font-family: var(--fuente-base);
   font-size: var(--tamano-texto);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: var(--foco-grosor) solid var(--color-foco);
+  outline-offset: var(--foco-separacion);
+}
+
+.icono {
+  flex: none;
+  width: var(--tamano-icono);
+  height: var(--tamano-icono);
+}
+
+/* Cifras técnicas (mm, px, índices): fuente monoespaciada para que se alineen. */
+.cifra {
+  font-family: var(--fuente-cifras);
 }

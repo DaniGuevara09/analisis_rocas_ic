@@ -64,5 +64,7 @@ class ReporteGranulometrico:
 
     resultado: ResultadoGranulometrico
     rangos: tuple[RangoTamano, ...]
+    nombres_rangos: tuple[str, ...]
+    colores_rangos: tuple[str, ...]
     histograma: tuple[ClaseHistograma, ...]
     fragmentos: tuple[FragmentoMedido, ...]

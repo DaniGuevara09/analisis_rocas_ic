@@ -6,10 +6,11 @@ import { mensajeDeError } from "../../api/errores";
 import type { AnalisisDetalle, EstadoAnalisis, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
-import { EtiquetaEstado } from "../../componentes/EtiquetaEstado";
+import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
 import { MensajeError } from "../../componentes/MensajeError";
 import { LienzoCalibracion } from "../../editor/LienzoCalibracion";
+import { formatearNumero } from "../../utilidades/formato";
 import "./CalibrarExcluir.css";
 
 type Modo = "ninguno" | "linea" | "region";
@@ -133,12 +134,29 @@ export function CalibrarExcluir() {
     });
 
   const longitudValida = Number(longitud) > 0;
+  const calibrado = estado !== "IMAGEN_CARGADA";
+  const longitudPx = linea.length === 2 ? Math.hypot(linea[1].x - linea[0].x, linea[1].y - linea[0].y) : null;
+
   const ayuda =
     modo === "linea"
-      ? `Haga clic en los dos extremos del objeto de escala (${linea.length} de 2).`
+      ? `Haga clic en los dos extremos del objeto de referencia (${linea.length} de 2).`
       : modo === "region"
-        ? "Haga clic para agregar vértices alrededor del objeto de escala y luego cierre la región."
-        : "";
+        ? "Haga clic en los vértices del objeto de referencia y luego pulse «Cerrar región»."
+        : linea.length < 2
+          ? "Pulse «Trazar línea» y marque los dos extremos del objeto de referencia."
+          : factor === null
+            ? "Arrastre los extremos para ajustar la línea, ingrese la longitud real y pulse «Calibrar»."
+            : !regionGuardada
+              ? "Escala calibrada. Se recomienda delimitar el objeto de referencia para excluirlo del conteo."
+              : "Calibración completa. Puede continuar con la segmentación.";
+  const textoModo = { linea: "Línea de escala", region: "Delimitar región", ninguno: "Navegación" }[modo];
+  const marcaTarea = (hecha: boolean, activa: boolean, numero: string) => (
+    <span
+      className={`calibrar__marca${hecha ? " calibrar__marca--hecha" : activa ? " calibrar__marca--activa" : ""}`}
+    >
+      {hecha ? <Icono nombre="hecho" /> : numero}
+    </span>
+  );
 
   return (
     <div className="calibrar">
@@ -149,6 +167,10 @@ export function CalibrarExcluir() {
 
         <div className="calibrar__cuerpo">
           <section className="calibrar__lienzo" aria-label="Imagen del análisis">
+            <div className="calibrar__barra-lienzo">
+              <span className={`calibrar__modo calibrar__modo--${modo}`}>{textoModo}</span>
+              <span className="calibrar__nombre-imagen">{detalle?.nombre ?? "Cargando..."}</span>
+            </div>
             {detalle && (
               <LienzoCalibracion
                 urlImagen={urlImagen(id)}
@@ -162,90 +184,140 @@ export function CalibrarExcluir() {
                 onMoverExtremo={alMoverExtremo}
               />
             )}
+            <p className="calibrar__ayuda-lienzo" role="status">
+              <Icono nombre="info" />
+              {ayuda}
+            </p>
           </section>
 
           <aside className="calibrar__panel">
-            <div className="calibrar__encabezado-panel">
-              <h1 className="calibrar__nombre">{detalle?.nombre ?? "Cargando..."}</h1>
-              <EtiquetaEstado estado={estado} />
-            </div>
-            {ayuda && <p className="calibrar__ayuda">{ayuda}</p>}
-
-            <section className="calibrar__seccion">
-              <h2 className="calibrar__subtitulo">Calibración</h2>
+            <section
+              className={`calibrar__seccion${!calibrado ? " calibrar__seccion--activa" : ""}`}
+              aria-labelledby="titulo-calibracion"
+            >
+              <div className="calibrar__cabecera">
+                {marcaTarea(calibrado, !calibrado, "1")}
+                <h2 id="titulo-calibracion" className="calibrar__subtitulo">
+                  Calibración de escala
+                </h2>
+                <span className="calibrar__requisito">Requerido</span>
+              </div>
+              <p className="calibrar__ayuda">
+                Marque los extremos del objeto de referencia sobre la imagen e ingrese su longitud real.
+              </p>
               <Boton variante="secundario" onClick={trazarLinea} disabled={!detalle}>
-                Trazar línea
+                {linea.length === 2 ? "Volver a trazar línea" : "Trazar línea"}
               </Boton>
               <label className="calibrar__etiqueta" htmlFor="longitud-real">
-                Longitud real (mm)
+                Longitud real
               </label>
-              <input
-                id="longitud-real"
-                className="calibrar__campo"
-                type="number"
-                min="0"
-                step="any"
-                value={longitud}
-                onChange={(e) => setLongitud(e.target.value)}
-              />
-              <Boton
-                onClick={() => void hacerCalibracion()}
-                disabled={ocupado || linea.length < 2 || !longitudValida}
-              >
-                Calibrar
-              </Boton>
+              <div className="calibrar__fila">
+                <span className="calibrar__entrada">
+                  <input
+                    id="longitud-real"
+                    className="calibrar__campo cifra"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={longitud}
+                    onChange={(e) => setLongitud(e.target.value)}
+                  />
+                  <span className="calibrar__unidad">mm</span>
+                </span>
+                <Boton
+                  onClick={() => void hacerCalibracion()}
+                  disabled={ocupado || linea.length < 2 || !longitudValida}
+                >
+                  Calibrar
+                </Boton>
+              </div>
               {factor !== null && (
-                <p className="calibrar__resultado">Factor de escala: {factor} mm/px</p>
+                <dl className="calibrar__resultado" role="status">
+                  <div>
+                    <dt>Longitud trazada</dt>
+                    <dd className="cifra">{longitudPx === null ? "—" : `${formatearNumero(longitudPx, 0)} px`}</dd>
+                  </div>
+                  <div>
+                    <dt>Longitud real</dt>
+                    <dd className="cifra">{formatearNumero(Number(longitud), 1)} mm</dd>
+                  </div>
+                  <div>
+                    <dt>Factor de escala</dt>
+                    <dd className="cifra">{formatearNumero(factor, 4)} mm/px</dd>
+                  </div>
+                </dl>
               )}
             </section>
 
-            <section className="calibrar__seccion">
-              <h2 className="calibrar__subtitulo">Exclusión del objeto de escala</h2>
-              <Boton variante="secundario" onClick={marcarRegion} disabled={!detalle}>
-                Marcar región
-              </Boton>
-              <div className="calibrar__fila">
-                <Boton
-                  variante="secundario"
-                  onClick={cerrarRegion}
-                  disabled={modo !== "region" || region.length < 3}
-                >
-                  Cerrar región
-                </Boton>
-                <Boton variante="secundario" onClick={deshacerPunto} disabled={region.length === 0}>
-                  Deshacer último punto
-                </Boton>
+            <section
+              className={`calibrar__seccion${calibrado && !regionGuardada ? " calibrar__seccion--activa" : ""}`}
+              aria-labelledby="titulo-exclusion"
+            >
+              <div className="calibrar__cabecera">
+                {marcaTarea(regionGuardada, calibrado && !regionGuardada, "2")}
+                <h2 id="titulo-exclusion" className="calibrar__subtitulo">
+                  Exclusión del objeto de referencia
+                </h2>
+                <span className="calibrar__requisito">Recomendado</span>
               </div>
-              <div className="calibrar__fila">
-                <Boton
-                  onClick={() => void guardarRegion()}
-                  disabled={ocupado || !regionCerrada || regionGuardada}
-                >
-                  Guardar región
-                </Boton>
-                <Boton
-                  variante="peligro"
-                  onClick={() => void quitarLaRegion()}
-                  disabled={ocupado || (region.length === 0 && !regionGuardada)}
-                >
-                  Quitar región
-                </Boton>
-              </div>
-              {regionGuardada && <p className="calibrar__resultado">Región guardada</p>}
-            </section>
-
-            <section className="calibrar__seccion">
-              <Boton onClick={() => navigate(`/analisis/${id}/editor`)} disabled={estado === "IMAGEN_CARGADA"}>
-                Continuar: segmentar y editar
-              </Boton>
-              {estado === "IMAGEN_CARGADA" && (
-                <p className="calibrar__ayuda">Calibre la escala para continuar.</p>
+              <p className="calibrar__ayuda">
+                Delimite el objeto de referencia para que no sea segmentado ni contabilizado como fragmento.
+              </p>
+              {regionGuardada ? (
+                <div className="calibrar__fila calibrar__fila--separada">
+                  <span className="calibrar__exito" role="status">
+                    <Icono nombre="hecho" />
+                    Región excluida guardada
+                  </span>
+                  <Boton variante="peligro" onClick={() => void quitarLaRegion()} disabled={ocupado}>
+                    Eliminar región
+                  </Boton>
+                </div>
+              ) : (
+                <>
+                  <div className="calibrar__fila">
+                    {modo === "region" ? (
+                      <Boton onClick={cerrarRegion} disabled={region.length < 3}>
+                        Cerrar región
+                      </Boton>
+                    ) : regionCerrada ? (
+                      <Boton onClick={() => void guardarRegion()} disabled={ocupado}>
+                        Guardar región
+                      </Boton>
+                    ) : (
+                      <Boton variante="secundario" onClick={marcarRegion} disabled={!detalle}>
+                        Delimitar región
+                      </Boton>
+                    )}
+                    {region.length > 0 && (
+                      <Boton variante="secundario" onClick={deshacerPunto}>
+                        <Icono nombre="deshacer" />
+                        Deshacer vértice
+                      </Boton>
+                    )}
+                  </div>
+                  {region.length > 0 && (
+                    <Boton variante="peligro" onClick={() => void quitarLaRegion()} disabled={ocupado}>
+                      Descartar región
+                    </Boton>
+                  )}
+                </>
               )}
             </section>
 
-            <Boton variante="secundario" onClick={() => navigate("/")}>
-              Atrás
-            </Boton>
+            <div className="calibrar__fila">
+              <Boton variante="secundario" onClick={() => navigate("/")}>
+                Atrás
+              </Boton>
+              <Boton
+                className="calibrar__continuar"
+                onClick={() => navigate(`/analisis/${id}/editor`)}
+                disabled={!calibrado}
+              >
+                {calibrado ? "Continuar a segmentación" : "Se requiere calibración"}
+                {calibrado && <Icono nombre="siguiente" />}
+              </Boton>
+            </div>
           </aside>
         </div>
       </main>

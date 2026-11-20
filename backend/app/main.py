@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from app.adaptadores.entrada.api import (
     router_analisis,
     router_calibracion,
+    router_configuracion,
     router_fragmentos,
     router_salud,
 )
@@ -19,6 +20,9 @@ from app.adaptadores.salida.almacenamiento.almacen_s3 import (
 from app.adaptadores.salida.almacenamiento.archivos_local import AlmacenArchivosLocal
 from app.adaptadores.salida.almacenamiento.inspector_pillow import InspectorImagenesPillow
 from app.adaptadores.salida.persistencia.repositorio import RepositorioPostgreSQL
+from app.adaptadores.salida.persistencia.repositorio_configuracion import (
+    RepositorioConfiguracionPostgreSQL,
+)
 from app.adaptadores.salida.segmentacion.no_disponible import SegmentadorNoDisponible
 from app.aplicacion.puertos import AlmacenImagenes, Segmentador
 from app.config import Configuracion, configuracion
@@ -66,9 +70,9 @@ def crear_app() -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
-    app.state.repositorio = RepositorioPostgreSQL(
-        create_engine(configuracion.database_url, pool_pre_ping=True)
-    )
+    motor = create_engine(configuracion.database_url, pool_pre_ping=True)
+    app.state.repositorio = RepositorioPostgreSQL(motor)
+    app.state.repositorio_configuracion = RepositorioConfiguracionPostgreSQL(motor)
     app.state.almacen = crear_almacen(configuracion)
     app.state.inspector = InspectorImagenesPillow()
     app.state.segmentador = crear_segmentador(configuracion)
@@ -78,6 +82,7 @@ def crear_app() -> FastAPI:
     api.include_router(router_analisis.router)
     api.include_router(router_calibracion.router)
     api.include_router(router_fragmentos.router)
+    api.include_router(router_configuracion.router)
     app.include_router(api)
     return app
 

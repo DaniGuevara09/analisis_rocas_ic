@@ -46,8 +46,9 @@ Proyecto de la asignatura **Trabajo de Campo**, Ingeniería de Sistemas y Comput
 | Editor de fragmentos: borrar, dibujar, unir, dividir y deshacer | ✅ |
 | Resultados: Dx, n, curva, histograma y colores por rango | ✅ |
 | Informe PDF (desde el navegador) e historial de análisis | ✅ |
-| Exportación a CSV | ⏳ Sprint 4 |
-| Usuarios con roles | Complementario |
+| Exportación a CSV (separador `;`, coma decimal, supuestos incluidos) | ✅ |
+| Configurar rangos de tamaño y colores (pantalla Configuración) | ✅ |
+| Usuarios con roles (RF-13) | Complementario, no implementado |
 
 ---
 
@@ -108,6 +109,8 @@ El detalle está en [`docs/arquitectura.md`](docs/arquitectura.md), [`docs/domin
 
 ## Instalación y ejecución
 
+> 📘 **Guía completa del sistema** (flujo detallado, cálculos, modelo de IA y todos los comandos de prueba): [`docs/GUIA_DEL_SISTEMA.md`](docs/GUIA_DEL_SISTEMA.md). Prueba de humo de punta a punta: `powershell -ExecutionPolicy Bypass -File scripts\prueba_humo.ps1`.
+
 ### Requisitos previos
 
 * **Docker Desktop** con Docker Compose v2 (abierto antes de ejecutar los comandos)
@@ -125,13 +128,13 @@ git clone https://github.com/Cristian13Galindo/analisis_rocas.git
 cd analisis_rocas
 ```
 
-### 2. Crear el archivo de entorno local
+### 2. (Opcional) Crear el archivo de entorno local
+
+No es obligatorio: sin `.env` el sistema arranca en modo local con valores por defecto (RNF-06). Si quieres cambiar algo:
 
 ```powershell
 Copy-Item .env.example .env
 ```
-
-Los valores por defecto de `.env.example` sirven tal cual para trabajar en local. **No hace falta editar nada.**
 
 ### 3. Levantar el sistema
 

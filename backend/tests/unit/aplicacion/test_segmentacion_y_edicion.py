@@ -19,6 +19,7 @@ from tests.unit.aplicacion.fakes import (
     CABECERA_JPG,
     AlmacenFalso,
     InspectorFalso,
+    RepositorioConfiguracionFalso,
     RepositorioFalso,
     SegmentadorFalso,
 )
@@ -163,7 +164,7 @@ def test_obtener_resultados_devuelve_reporte(
         [cuadrado(0, 0, 10), cuadrado(20, 0, 20), cuadrado(50, 0, 40)], OrigenFragmento.MODELO
     )
     repositorio.guardar(calibrado)
-    reporte = ObtenerResultados(repositorio).ejecutar(calibrado.id)
+    reporte = ObtenerResultados(repositorio, RepositorioConfiguracionFalso()).ejecutar(calibrado.id)
     assert reporte.resultado.numero_fragmentos == 3
     assert len(reporte.fragmentos) == 3
 
@@ -172,11 +173,11 @@ def test_obtener_resultados_con_pocos_fragmentos_lanza_datos_insuficientes(
     calibrado: Analisis, repositorio: RepositorioFalso
 ) -> None:
     with pytest.raises(DatosInsuficientes):
-        ObtenerResultados(repositorio).ejecutar(calibrado.id)
+        ObtenerResultados(repositorio, RepositorioConfiguracionFalso()).ejecutar(calibrado.id)
 
 
 def test_obtener_resultados_id_inexistente_lanza_no_encontrado(
     repositorio: RepositorioFalso,
 ) -> None:
     with pytest.raises(AnalisisNoEncontrado):
-        ObtenerResultados(repositorio).ejecutar(uuid4())
+        ObtenerResultados(repositorio, RepositorioConfiguracionFalso()).ejecutar(uuid4())

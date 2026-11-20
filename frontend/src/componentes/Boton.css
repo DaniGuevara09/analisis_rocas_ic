@@ -1,10 +1,16 @@
 .boton {
-  padding: var(--espacio-2) var(--espacio-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--espacio-2);
+  min-height: var(--alto-control);
+  padding: 0 var(--espacio-3);
   border: var(--borde-grosor) solid var(--color-acento);
-  border-radius: var(--radio-pequeno);
+  border-radius: var(--radio-control);
   font-family: inherit;
-  font-size: var(--tamano-texto);
+  font-size: var(--tamano-texto-pequeno);
   font-weight: var(--peso-negrita);
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -13,15 +19,28 @@
   color: var(--color-sobre-acento);
 }
 
+.boton--primario:hover:not(:disabled) {
+  background: var(--color-acento-hover);
+}
+
 .boton--secundario {
   background: var(--color-superficie);
-  color: var(--color-acento);
+  border-color: var(--color-borde-fuerte);
+  color: var(--color-texto);
+}
+
+.boton--secundario:hover:not(:disabled) {
+  background: var(--color-acento-suave);
 }
 
 .boton--peligro {
   background: var(--color-superficie);
-  border-color: var(--color-error);
+  border-color: var(--color-borde-fuerte);
   color: var(--color-error);
+}
+
+.boton--peligro:hover:not(:disabled) {
+  background: var(--color-error-fondo);
 }
 
 .boton:disabled {

@@ -1,11 +1,22 @@
 .encabezado {
   background: var(--color-encabezado);
-  padding: var(--espacio-3) var(--espacio-4);
+  border-bottom: var(--borde-grosor) solid var(--color-borde);
+}
+
+.encabezado__contenido {
+  display: flex;
+  align-items: center;
+  max-width: var(--ancho-contenido-max);
+  margin: 0 auto;
+  padding: var(--espacio-2) var(--espacio-4);
 }
 
 .encabezado__titulo {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--alto-control);
   color: var(--color-sobre-encabezado);
-  font-size: var(--tamano-titulo);
+  font-size: var(--tamano-subtitulo);
   font-weight: var(--peso-negrita);
   text-decoration: none;
 }

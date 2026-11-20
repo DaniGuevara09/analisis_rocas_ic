@@ -79,6 +79,10 @@ class AlmacenImagenes(Protocol):
 
 class InspectorImagenes(Protocol):
     def inspeccionar(self, contenido: bytes) -> tuple[str, int, int]: ...  # (formato "JPG"|"PNG", ancho_px, alto_px)
+
+class RepositorioConfiguracion(Protocol):                    # RF-14, tabla `configuracion` (migración 0002)
+    def obtener_rangos(self) -> ConfiguracionRangos | None: ...
+    def guardar_rangos(self, configuracion: ConfiguracionRangos | None) -> None: ...  # None = por defecto
 ```
 
 `InspectorImagenes` existe porque detectar formato y dimensiones requiere Pillow, que no puede estar en dominio ni aplicación. El formato se detecta por el contenido del archivo, no por la extensión ni el content-type; si no es JPG ni PNG, el adaptador (`InspectorImagenesPillow`) lanza `FormatoImagenNoValido`.
@@ -96,6 +100,8 @@ Los casos de uso reciben los puertos por constructor (inyección de dependencias
 Volúmenes: `imagenes` (fotografías) y `pgdata` (datos de PostgreSQL).
 
 En desarrollo se permite exponer 8000 y 5432 en `localhost` mediante un `docker-compose.override.yml`.
+
+**RNF-06:** el `.env` es opcional (`env_file` con `required: false`). Sin él, `docker-compose.yml` usa valores locales por defecto (`POSTGRES_*`, `DATABASE_URL` hacia el contenedor `db`, `ALMACEN_IMAGENES=local`). `PUERTO_WEB` (por defecto 80) cambia el puerto publicado del frontend.
 
 ### Almacén de imágenes por configuración
 

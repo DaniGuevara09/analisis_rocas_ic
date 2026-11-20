@@ -7,6 +7,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from app.dominio import granulometria
+from app.dominio.configuracion import CONFIGURACION_POR_DEFECTO, ConfiguracionRangos
 from app.dominio.errores import (
     CalibracionNoValida,
     DatosNoValidos,
@@ -317,12 +318,14 @@ class Analisis:
         diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
         return granulometria.calcular(diametros)
 
-    def generar_reporte(self) -> ReporteGranulometrico:
-        """Resultado, rangos de color, histograma y diámetro de cada fragmento."""
+    def generar_reporte(
+        self, configuracion: ConfiguracionRangos = CONFIGURACION_POR_DEFECTO
+    ) -> ReporteGranulometrico:
+        """Resultado, rangos de color (según la configuración), histograma y diámetros."""
         factor = self.factor_mm_por_px()
         diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
         resultado = granulometria.calcular(diametros)
-        rangos = granulometria.rangos_por_defecto(resultado)
+        rangos = configuracion.rangos(resultado.curva)
         medidos = tuple(
             FragmentoMedido(f.id, d, granulometria.indice_rango(d, rangos))
             for f, d in zip(self.fragmentos, diametros, strict=True)
@@ -330,6 +333,8 @@ class Analisis:
         return ReporteGranulometrico(
             resultado=resultado,
             rangos=rangos,
+            nombres_rangos=configuracion.nombres,
+            colores_rangos=configuracion.colores,
             histograma=granulometria.histograma(diametros),
             fragmentos=medidos,
         )

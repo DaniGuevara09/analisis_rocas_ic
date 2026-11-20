@@ -67,6 +67,9 @@ export interface PuntoCurva {
 
 export interface RangoTamano {
   indice: number;
+  nombre: string;
+  /** Color "#rrggbb" configurado para el rango (RF-14). */
+  color: string;
   limite_inferior_mm: number;
   limite_superior_mm: number | null;
 }
@@ -98,4 +101,19 @@ export interface Resultados {
   histograma: ClaseHistograma[];
   fragmentos: FragmentoMedido[];
   supuestos: string[];
+}
+
+export type ModoRangos = "RELATIVO" | "ABSOLUTO";
+
+/** Configuración de rangos (RF-14): N cortes definen N + 1 rangos con nombre y color. */
+export interface ConfiguracionRangos {
+  modo: ModoRangos;
+  cortes: number[];
+  nombres: string[];
+  colores: string[];
+}
+
+export interface Salud {
+  estado: string;
+  modelo_disponible: boolean;
 }

@@ -64,3 +64,12 @@ class TablaFragmento(Base):
     )
     poligono: Mapped[list[Any]] = mapped_column(JSONB)
     origen: Mapped[str] = mapped_column(String(10))
+
+
+class TablaConfiguracion(Base):
+    """Tabla `configuracion`: pares clave/valor JSON (p. ej. clave "rangos", RF-14)."""
+
+    __tablename__ = "configuracion"
+
+    clave: Mapped[str] = mapped_column(String(50), primary_key=True)
+    valor: Mapped[dict[str, Any]] = mapped_column(JSONB)
