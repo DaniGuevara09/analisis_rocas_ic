@@ -458,11 +458,11 @@ export function EditorFragmentos() {
                   </Boton>
                 </div>
               )}
-              <p className="editor__ayuda">
-                {detalle?.region_excluida
-                  ? "Región excluida activa (contorno punteado): no se cuentan los fragmentos cuyo centro cae dentro."
-                  : "Sin región excluida. Si el objeto de referencia aparece entre las rocas, exclúyalo en Calibración para que no se cuente como fragmento."}
-              </p>
+              {detalle?.region_excluida && (
+                <p className="editor__ayuda">
+                  Región excluida activa (contorno punteado): no se cuentan los fragmentos cuyo centro cae dentro.
+                </p>
+              )}
               {segmentado && (
                 <p className="editor__ayuda">
                   Revise el resultado: <strong>Dividir</strong> los fragmentos unidos, <strong>Dibujar</strong> los no

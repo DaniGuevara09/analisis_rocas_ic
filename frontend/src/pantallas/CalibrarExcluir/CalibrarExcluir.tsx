@@ -1,7 +1,7 @@
 import { type ChangeEvent, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { calibrar, excluirRegion, obtenerAnalisis, quitarRegion, urlImagen } from "../../api/analisis";
+import { calibrar, obtenerAnalisis, urlImagen } from "../../api/analisis";
 import { mensajeDeError } from "../../api/errores";
 import type { AnalisisDetalle, EstadoAnalisis, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
@@ -9,7 +9,6 @@ import { Encabezado } from "../../componentes/Encabezado";
 import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
 import { MensajeError } from "../../componentes/MensajeError";
-import { ModalConfirmacion } from "../../componentes/ModalConfirmacion";
 import { LienzoCalibracion } from "../../editor/LienzoCalibracion";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
 import {
@@ -17,13 +16,12 @@ import {
   avisoLongitud,
   calcularLongitudEfectivaMm,
   distanciaLineaPx,
-  OBJETOS_REFERENCIA,
   type Unidad,
   UNIDADES,
 } from "./longitud";
 import "./CalibrarExcluir.css";
 
-type Modo = "ninguno" | "linea" | "linea2" | "region";
+type Modo = "ninguno" | "linea" | "linea2";
 
 interface SegundoObjetoGuardado {
   linea1Texto: string;
@@ -74,11 +72,6 @@ export function CalibrarExcluir() {
 
   const [factor, setFactor] = useState<number | null>(null);
 
-  const [region, setRegion] = useState<Punto[]>([]);
-  const [regionCerrada, setRegionCerrada] = useState(false);
-  const [regionGuardada, setRegionGuardada] = useState(false);
-  const [confirmarDescarte, setConfirmarDescarte] = useState(false);
-
   // Reanudar: se dibuja lo que ya guarda el servidor (también al refrescar la página).
   useEffect(() => {
     obtenerAnalisis(id)
@@ -103,11 +96,6 @@ export function CalibrarExcluir() {
             setUnidad("mm");
             setLongitudCalibrada(datos.calibracion.longitud_real_mm);
           }
-        }
-        if (datos.region_excluida) {
-          setRegion(datos.region_excluida.poligono);
-          setRegionCerrada(true);
-          setRegionGuardada(true);
         }
       })
       .catch((e: unknown) => setError(mensajeDeError(e)));
@@ -140,9 +128,6 @@ export function CalibrarExcluir() {
       if (nueva.length === 2) {
         setModo("ninguno");
       }
-    } else if (modo === "region" && !regionCerrada) {
-      setRegion([...region, punto]);
-      setRegionGuardada(false);
     }
   };
 
@@ -249,45 +234,6 @@ export function CalibrarExcluir() {
     setFactor(null);
   };
 
-  const marcarRegion = () => {
-    setRegion([]);
-    setRegionCerrada(false);
-    setRegionGuardada(false);
-    setModo("region");
-  };
-
-  const cerrarRegion = () =>
-    ejecutar(async () => {
-      setRegionCerrada(true);
-      setModo("ninguno");
-      await excluirRegion(id, region);
-      setRegionGuardada(true);
-    });
-
-  const deshacerPunto = () => {
-    setRegion(region.slice(0, -1));
-    setRegionGuardada(false);
-    if (regionCerrada) {
-      setRegionCerrada(false);
-      setModo("region");
-    }
-  };
-
-  const guardarRegion = () =>
-    ejecutar(async () => {
-      await excluirRegion(id, region);
-      setRegionGuardada(true);
-    });
-
-  const quitarLaRegion = () =>
-    ejecutar(async () => {
-      await quitarRegion(id);
-      setRegion([]);
-      setRegionCerrada(false);
-      setRegionGuardada(false);
-      setModo("ninguno");
-    });
-
   const longitudValida = longitudMm !== null;
   const longitud2Valida = longitudMm2 !== null;
   const aviso = avisoLongitud(longitudMm);
@@ -305,21 +251,16 @@ export function CalibrarExcluir() {
       ? `Haga clic en los dos extremos del objeto de referencia 1 (${linea.length} de 2).`
       : modo === "linea2"
         ? `Haga clic en los dos extremos del objeto de referencia 2 (${linea2.length} de 2).`
-        : modo === "region"
-          ? "Haga clic en los vértices alrededor del objeto de referencia y pulse «Cerrar y guardar región»."
-          : linea.length < 2
-            ? "Pulse «Trazar línea» y marque los dos extremos del objeto de referencia."
-            : usarSegundoObjeto && linea2.length < 2
-              ? "Pulse «Trazar línea 2» y marque los dos extremos del segundo objeto de referencia."
-              : factor === null
-                ? "Arrastre los extremos para ajustar las líneas, ingrese la longitud real y pulse «Calibrar»."
-                : !regionGuardada
-                  ? "Escala calibrada. Si algún objeto de referencia está entre las rocas, delimítelo para excluirlo del conteo."
-                  : "Calibración completa. Puede continuar con la segmentación.";
+        : linea.length < 2
+          ? "Pulse «Trazar línea» y marque los dos extremos del objeto de referencia."
+          : usarSegundoObjeto && linea2.length < 2
+            ? "Pulse «Trazar línea 2» y marque los dos extremos del segundo objeto de referencia."
+            : factor === null
+              ? "Arrastre los extremos para ajustar las líneas, ingrese la longitud real y pulse «Calibrar»."
+              : "Calibración completa. Puede continuar con la segmentación.";
   const textoModo = {
     linea: "Línea objeto 1",
     linea2: "Línea objeto 2",
-    region: "Delimitar región",
     ninguno: "Navegación",
   }[modo];
   const marcaTarea = (hecha: boolean, activa: boolean, numero: string) => (
@@ -350,8 +291,8 @@ export function CalibrarExcluir() {
                 altoImg={detalle.imagen.alto_px}
                 linea={linea}
                 lineaSecundaria={usarSegundoObjeto ? linea2 : []}
-                region={region}
-                regionCerrada={regionCerrada}
+                region={[]}
+                regionCerrada={false}
                 aceptaClics={modo !== "ninguno"}
                 onClicImagen={alClicImagen}
                 onMoverExtremo={alMoverExtremo}
@@ -391,34 +332,25 @@ export function CalibrarExcluir() {
                     <span className="calibrar__ayuda cifra">{formatearNumero(longitudPx, 0)} px</span>
                   )}
                 </div>
-                <Boton variante="secundario" onClick={trazarLinea} disabled={!detalle}>
-                  {linea.length === 2
-                    ? usarSegundoObjeto
-                      ? "Volver a trazar línea 1"
-                      : "Volver a trazar línea"
-                    : usarSegundoObjeto
-                      ? "Trazar línea 1"
-                      : "Trazar línea"}
-                </Boton>
-                <div className="calibrar__objetos" role="group" aria-label="Objetos de referencia frecuentes">
-                  {OBJETOS_REFERENCIA.map((objeto) => {
-                    const activo =
-                      aMilimetros(String(objeto.valor), objeto.unidad) === longitudMm && unidad === objeto.unidad;
-                    return (
-                      <button
-                        key={objeto.nombre}
-                        type="button"
-                        className={`calibrar__objeto${activo ? " calibrar__objeto--activo" : ""}`}
-                        aria-pressed={activo}
-                        onClick={() => cambiarLongitud(String(objeto.valor), objeto.unidad)}
-                      >
-                        {objeto.nombre}
-                      </button>
-                    );
-                  })}
+                <div className="calibrar__barra-trazo">
+                  <Boton
+                    variante="secundario"
+                    className="calibrar__boton-trazo"
+                    onClick={trazarLinea}
+                    disabled={!detalle}
+                  >
+                    <Icono nombre="lapiz" />
+                    {linea.length === 2
+                      ? usarSegundoObjeto
+                        ? "Volver a trazar línea 1"
+                        : "Volver a trazar línea"
+                      : usarSegundoObjeto
+                        ? "Trazar línea 1"
+                        : "Trazar línea"}
+                  </Boton>
                 </div>
                 <label className="calibrar__etiqueta" htmlFor="longitud-real">
-                  Longitud real (u otro objeto)
+                  Longitud real
                 </label>
                 <div className="calibrar__fila">
                   <span className="calibrar__entrada">
@@ -476,34 +408,20 @@ export function CalibrarExcluir() {
                       <span className="calibrar__punto-color calibrar__punto-color--secundario" aria-hidden="true" />{" "}
                       Objeto de referencia 2
                     </span>
-                    <Boton variante="peligro" onClick={quitarSegundoObjeto} disabled={ocupado}>
-                      Quitar
-                    </Boton>
-                  </div>
-                  <div className="calibrar__fila calibrar__fila--separada">
-                    <Boton variante="secundario" onClick={trazarLinea2} disabled={!detalle}>
-                      {linea2.length === 2 ? "Volver a trazar línea 2" : "Trazar línea 2"}
-                    </Boton>
                     {longitudPx2 !== null && (
                       <span className="calibrar__ayuda cifra">{formatearNumero(longitudPx2, 0)} px</span>
                     )}
                   </div>
-                  <div className="calibrar__objetos" role="group" aria-label="Objetos de referencia frecuentes (objeto 2)">
-                    {OBJETOS_REFERENCIA.map((objeto) => {
-                      const activo =
-                        aMilimetros(String(objeto.valor), objeto.unidad) === longitudMm2 && unidad2 === objeto.unidad;
-                      return (
-                        <button
-                          key={objeto.nombre}
-                          type="button"
-                          className={`calibrar__objeto${activo ? " calibrar__objeto--activo" : ""}`}
-                          aria-pressed={activo}
-                          onClick={() => cambiarLongitud2(String(objeto.valor), objeto.unidad)}
-                        >
-                          {objeto.nombre}
-                        </button>
-                      );
-                    })}
+                  <div className="calibrar__barra-trazo">
+                    <Boton
+                      variante="secundario"
+                      className="calibrar__boton-trazo"
+                      onClick={trazarLinea2}
+                      disabled={!detalle}
+                    >
+                      <Icono nombre="lapiz" />
+                      {linea2.length === 2 ? "Volver a trazar línea 2" : "Trazar línea 2"}
+                    </Boton>
                   </div>
                   <label className="calibrar__etiqueta" htmlFor="longitud-real-2">
                     Longitud real del objeto 2
@@ -549,6 +467,9 @@ export function CalibrarExcluir() {
                       {aviso2}
                     </p>
                   )}
+                  <Boton variante="peligro" onClick={quitarSegundoObjeto} disabled={ocupado}>
+                    Quitar
+                  </Boton>
                 </div>
               )}
 
@@ -609,64 +530,6 @@ export function CalibrarExcluir() {
               )}
             </section>
 
-            <section
-              className={`calibrar__seccion${calibrado && !regionGuardada ? " calibrar__seccion--activa" : ""}`}
-              aria-labelledby="titulo-exclusion"
-            >
-              <div className="calibrar__cabecera">
-                {marcaTarea(regionGuardada, calibrado && !regionGuardada, "2")}
-                <h2 id="titulo-exclusion" className="calibrar__subtitulo">
-                  Exclusión del objeto de referencia
-                </h2>
-                <span className="calibrar__requisito">Recomendado</span>
-              </div>
-              <p className="calibrar__ayuda">
-                <strong>¿Es necesario?</strong> Sí, si el objeto de referencia aparece sobre o entre las rocas: el modelo
-                lo detectaría como un fragmento más y alteraría la curva. Puede omitirse si el objeto está fuera de la
-                pila. Los fragmentos cuyo centro cae dentro de la región no se cuentan.
-              </p>
-              {regionGuardada ? (
-                <div className="calibrar__fila calibrar__fila--separada">
-                  <span className="calibrar__exito" role="status">
-                    <Icono nombre="hecho" />
-                    Región excluida guardada
-                  </span>
-                  <Boton variante="peligro" onClick={() => setConfirmarDescarte(true)} disabled={ocupado}>
-                    Eliminar región
-                  </Boton>
-                </div>
-              ) : (
-                <>
-                  <div className="calibrar__fila">
-                    {modo === "region" ? (
-                      <Boton onClick={() => void cerrarRegion()} disabled={ocupado || region.length < 3}>
-                        Cerrar y guardar región
-                      </Boton>
-                    ) : regionCerrada ? (
-                      <Boton onClick={() => void guardarRegion()} disabled={ocupado}>
-                        Reintentar guardar región
-                      </Boton>
-                    ) : (
-                      <Boton variante="secundario" onClick={marcarRegion} disabled={!detalle}>
-                        Delimitar región
-                      </Boton>
-                    )}
-                    {region.length > 0 && (
-                      <Boton variante="secundario" onClick={deshacerPunto}>
-                        <Icono nombre="deshacer" />
-                        Deshacer vértice
-                      </Boton>
-                    )}
-                  </div>
-                  {region.length > 0 && (
-                    <Boton variante="peligro" onClick={() => setConfirmarDescarte(true)} disabled={ocupado}>
-                      Descartar región
-                    </Boton>
-                  )}
-                </>
-              )}
-            </section>
-
             <div className="calibrar__fila">
               <Boton variante="secundario" onClick={() => navigate("/")}>
                 Atrás
@@ -674,7 +537,7 @@ export function CalibrarExcluir() {
               <Boton
                 className="calibrar__continuar"
                 onClick={() => navigate(`/analisis/${id}/editor`)}
-                disabled={!calibrado || ocupado || modo === "region"}
+                disabled={!calibrado || ocupado}
               >
                 {calibrado ? "Continuar a segmentación" : "Se requiere calibración"}
                 {calibrado && <Icono nombre="siguiente" />}
@@ -683,19 +546,6 @@ export function CalibrarExcluir() {
           </aside>
         </div>
       </main>
-
-      {confirmarDescarte && (
-        <ModalConfirmacion
-          titulo="Descartar la región excluida"
-          mensaje="Sin esta región, si el objeto de referencia está entre las rocas, el modelo lo contará como un fragmento y alterará la curva y los indicadores. Descártela solo si el objeto está fuera de la pila."
-          textoConfirmar="Descartar región"
-          onConfirmar={() => {
-            setConfirmarDescarte(false);
-            void quitarLaRegion();
-          }}
-          onCancelar={() => setConfirmarDescarte(false)}
-        />
-      )}
     </div>
   );
 }
