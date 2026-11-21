@@ -9,6 +9,7 @@ import {
   dividirConTrazo,
   dividirPoligono,
   esDiminuto,
+  insertarPuntoEnBorde,
   unirPoligonos,
 } from "./operacionesPoligonos";
 
@@ -111,10 +112,10 @@ describe("contienePunto", () => {
 });
 
 describe("esDiminuto", () => {
-  it("marca como diminutos los contornos de menos de 20 px² (clics accidentales)", () => {
-    expect(esDiminuto(cuadrado(0, 0, 2))).toBe(true); // 4 px²
-    expect(esDiminuto([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 2 }, { x: 0, y: 2 }])).toBe(false); // 20 px²
-    expect(AREA_MINIMA_FRAGMENTO_PX2).toBe(20);
+  it("marca como diminutos los contornos de menos de 1 px²", () => {
+    expect(esDiminuto(cuadrado(0, 0, 0.5))).toBe(true); // 0.25 px²
+    expect(esDiminuto(cuadrado(0, 0, 1))).toBe(false); // 1 px²
+    expect(AREA_MINIMA_FRAGMENTO_PX2).toBe(1);
   });
 });
 
@@ -164,5 +165,15 @@ describe("dividirConTrazo (línea quebrada)", () => {
       ]),
     ).toBeNull();
     expect(dividirConTrazo(cuadrado(0, 0, 10), [{ x: 1, y: 1 }])).toBeNull();
+  });
+});
+
+describe("insertarPuntoEnBorde", () => {
+  it("inserta un punto proyectado en la arista más cercana", () => {
+    const base = cuadrado(0, 0, 10);
+    // Clic cerca del borde superior (0,0)-(10,0) en x=5, y=0.5
+    const resultado = insertarPuntoEnBorde(base, { x: 5, y: 0.5 });
+    expect(resultado).toHaveLength(5);
+    expect(resultado[1]).toEqual({ x: 5, y: 0 });
   });
 });

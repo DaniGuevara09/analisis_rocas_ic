@@ -48,9 +48,8 @@ __all__ = [
 
 FORMATOS_IMAGEN = ("JPG", "PNG")
 TOLERANCIA_AREA_PX = 1e-9
-# Área mínima de un fragmento: por debajo es un clic accidental, no una roca. Es el
-# mismo umbral con el que se descartan las máscaras diminutas del modelo.
-AREA_MINIMA_FRAGMENTO_PX2 = 20.0
+# Área mínima de un fragmento: por debajo de 1 px² es ruido geométrico degenerado.
+AREA_MINIMA_FRAGMENTO_PX2 = 1.0
 LONGITUD_MAXIMA_NOMBRE = 150
 
 

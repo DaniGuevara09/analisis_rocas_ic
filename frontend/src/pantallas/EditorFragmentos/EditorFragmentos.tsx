@@ -17,6 +17,7 @@ import {
   contienePunto,
   dividirConTrazo,
   esDiminuto,
+  insertarPuntoEnBorde,
   unirPoligonos,
 } from "../../editor/operacionesPoligonos";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
@@ -25,16 +26,12 @@ import "./EditorFragmentos.css";
 
 const AYUDAS: Record<Herramienta, string> = {
   seleccionar:
-    "Clic sobre un fragmento para ver su tamaño; Shift + clic para seleccionar varios y luego Unir o Eliminar. Rueda del ratón o botones: zoom; arrastre: desplazar.",
+    "Arrastre un punto para moverlo, tóquelo para eliminarlo o haga clic en el borde para agregar un punto. Pulse Guardar (Ctrl + S) al finalizar.",
   dibujar:
-    "Digitalice el contorno de un fragmento no detectado. Cierre el polígono sobre el primer vértice, con doble clic o con Enter.",
-  dividir: "Corrige subsegmentación: trace con dos clics una línea de corte que atraviese el fragmento de borde a borde.",
+    "Digitalice el contorno de un fragmento no detectado. Termine con triple clic rápido, Enter o el botón Terminar fragmento.",
+  dividir:
+    "Corte libre: haga clic a lo largo de la grieta, de borde a borde del fragmento, y termine con triple clic rápido, Enter o el botón Cortar.",
 };
-
-type ModoDivision = "recta" | "quebrada";
-
-const AYUDA_QUEBRADA =
-  "Corte libre: haga clic a lo largo de la grieta, de borde a borde del fragmento, y termine con doble clic o Enter.";
 
 const NOMBRES: Record<Herramienta, string> = {
   seleccionar: "Seleccionar",
@@ -57,14 +54,20 @@ export function EditorFragmentos() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const edicion = useEdicionFragmentos(id);
-  const { detalle, fragmentos, resultados, aplicar, setError } = edicion;
+  const { detalle, fragmentos, resultados, aplicar, editarLocal, guardarPendientes, cambiosPendientes, setError } =
+    edicion;
 
   const [herramienta, setHerramienta] = useState<Herramienta>("seleccionar");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [trazo, setTrazo] = useState<Punto[]>([]);
+  const [puntosDeshechos, setPuntosDeshechos] = useState<Punto[]>([]);
   const [mostrarContornos, setMostrarContornos] = useState(true);
   const [confirmarSegmentar, setConfirmarSegmentar] = useState(false);
-  const [modoDivision, setModoDivision] = useState<ModoDivision>("recta");
+
+  const limpiarTrazo = useCallback(() => {
+    setTrazo([]);
+    setPuntosDeshechos([]);
+  }, []);
 
   const ocupado = edicion.estadoGuardado === "guardando" || edicion.segmentando;
 
@@ -86,8 +89,11 @@ export function EditorFragmentos() {
   );
 
   const elegirHerramienta = (nueva: Herramienta) => {
+    if (cambiosPendientes) {
+      void guardarPendientes();
+    }
     setHerramienta(nueva);
-    setTrazo([]);
+    limpiarTrazo();
     if (nueva !== "seleccionar") {
       setSeleccionados(new Set());
     }
@@ -118,16 +124,18 @@ export function EditorFragmentos() {
 
   const dividir = useCallback(
     (corte: Punto[]) => {
-      setTrazo([]);
+      limpiarTrazo();
       // Prueba los fragmentos que toca el trazo hasta encontrar uno que quede cortado.
       const medios = corte.slice(1).map((b, i) => ({ x: (corte[i].x + b.x) / 2, y: (corte[i].y + b.y) / 2 }));
       const toca = (poligono: Punto[]) => [...corte, ...medios].some((p) => contienePunto(poligono, p));
       let objetivo: Fragmento | null = null;
       let piezas: Punto[][] | null = null;
       for (const candidato of fragmentos.filter((f) => toca(f.poligono))) {
-        piezas = dividirConTrazo(candidato.poligono, corte);
-        if (piezas) {
+        const resultado = dividirConTrazo(candidato.poligono, corte);
+        const validas = resultado?.filter((p) => !esDiminuto(p)) ?? [];
+        if (validas.length >= 2) {
           objetivo = candidato;
+          piezas = validas;
           break;
         }
       }
@@ -135,20 +143,16 @@ export function EditorFragmentos() {
         setError("El corte debe atravesar un fragmento de un borde a otro.");
         return;
       }
-      if (piezas.some(esDiminuto)) {
-        setError(`Una de las partes quedaría con menos de ${AREA_MINIMA_FRAGMENTO_PX2} px². Trace el corte más al centro.`);
-        return;
-      }
       const resto = fragmentos.filter((f) => f.id !== objetivo.id).map(aSolicitud);
       const nuevos = piezas.map((poligono): FragmentoSolicitud => ({ poligono, origen: "MANUAL" }));
       void aplicar([...resto, ...nuevos]);
     },
-    [aplicar, fragmentos, setError],
+    [aplicar, fragmentos, limpiarTrazo, setError],
   );
 
   const cerrarDibujo = useCallback(() => {
     const puntos = sinRepetidos(trazo);
-    if (herramienta === "dividir" && modoDivision === "quebrada") {
+    if (herramienta === "dividir") {
       if (puntos.length >= 2 && !ocupado) {
         dividir(puntos);
       }
@@ -158,7 +162,7 @@ export function EditorFragmentos() {
       return;
     }
     if (esDiminuto(puntos)) {
-      setTrazo([]);
+      limpiarTrazo();
       setError(
         `El contorno es demasiado pequeño (mínimo ${AREA_MINIMA_FRAGMENTO_PX2} px²). Haga clic alrededor de todo el borde del fragmento.`,
       );
@@ -166,11 +170,32 @@ export function EditorFragmentos() {
     }
     const nuevo: FragmentoSolicitud = { poligono: puntos, origen: "MANUAL" };
     void aplicar([...fragmentos.map(aSolicitud), nuevo]);
-    setTrazo([]);
-  }, [aplicar, dividir, fragmentos, herramienta, modoDivision, ocupado, trazo, setError]);
+    limpiarTrazo();
+  }, [aplicar, dividir, fragmentos, herramienta, limpiarTrazo, ocupado, trazo, setError]);
 
-  /** Quita el último punto marcado (clic equivocado al trazar). */
-  const quitarUltimoPunto = useCallback(() => setTrazo((t) => t.slice(0, -1)), []);
+  /** Quita el último punto marcado (clic equivocado al trazar) y lo guarda para poder rehacerlo con Ctrl + Y. */
+  const quitarUltimoPunto = useCallback(() => {
+    setTrazo((actual) => {
+      if (actual.length === 0) {
+        return actual;
+      }
+      const ultimo = actual[actual.length - 1];
+      setPuntosDeshechos((deshechos) => [...deshechos, ultimo]);
+      return actual.slice(0, -1);
+    });
+  }, []);
+
+  /** Vuelve a colocar el último punto quitado con Ctrl + Z. */
+  const rehacerPunto = useCallback(() => {
+    setPuntosDeshechos((deshechos) => {
+      if (deshechos.length === 0) {
+        return deshechos;
+      }
+      const recuperado = deshechos[deshechos.length - 1];
+      setTrazo((actual) => [...actual, recuperado]);
+      return deshechos.slice(0, -1);
+    });
+  }, []);
 
   // Fragmentos diminutos guardados antes de existir la regla de área mínima.
   const diminutos = useMemo(() => fragmentos.filter((f) => esDiminuto(f.poligono)), [fragmentos]);
@@ -187,12 +212,9 @@ export function EditorFragmentos() {
     }
     if (herramienta === "seleccionar") {
       setSeleccionados(new Set());
-    } else if (herramienta === "dibujar" || modoDivision === "quebrada") {
-      setTrazo((t) => [...t, punto]);
-    } else if (trazo.length === 0) {
-      setTrazo([punto]);
     } else {
-      dividir([trazo[0], punto]);
+      setPuntosDeshechos([]);
+      setTrazo((t) => [...t, punto]);
     }
   };
 
@@ -211,6 +233,70 @@ export function EditorFragmentos() {
     });
   };
 
+  const editarPoligono = useCallback(
+    (fragmentoId: string, nuevoPoligono: Punto[]) => {
+      if (edicion.segmentando) {
+        return;
+      }
+      if (esDiminuto(nuevoPoligono)) {
+        setError(`El contorno es demasiado pequeño (mínimo ${AREA_MINIMA_FRAGMENTO_PX2} px²).`);
+        return;
+      }
+      editarLocal(
+        fragmentos.map((f) =>
+          f.id === fragmentoId ? { ...f, poligono: nuevoPoligono, origen: "MANUAL" } : f,
+        ),
+      );
+    },
+    [edicion.segmentando, editarLocal, fragmentos, setError],
+  );
+
+  const eliminarVertice = useCallback(
+    (fragmentoId: string, indice: number) => {
+      if (edicion.segmentando) {
+        return;
+      }
+      const objetivo = fragmentos.find((f) => f.id === fragmentoId);
+      if (!objetivo) {
+        return;
+      }
+      if (objetivo.poligono.length <= 3) {
+        setError("Un fragmento debe conservar al menos 3 puntos.");
+        return;
+      }
+      const nuevoPoligono = objetivo.poligono.filter((_, i) => i !== indice);
+      if (esDiminuto(nuevoPoligono)) {
+        setError(`El contorno resultante sería demasiado pequeño (mínimo ${AREA_MINIMA_FRAGMENTO_PX2} px²).`);
+        return;
+      }
+      editarLocal(
+        fragmentos.map((f) =>
+          f.id === fragmentoId ? { ...f, poligono: nuevoPoligono, origen: "MANUAL" } : f,
+        ),
+      );
+    },
+    [edicion.segmentando, editarLocal, fragmentos, setError],
+  );
+
+  const agregarVerticeBorde = useCallback(
+    (fragmentoId: string, punto: Punto) => {
+      if (edicion.segmentando) {
+        return;
+      }
+      const objetivo = fragmentos.find((f) => f.id === fragmentoId);
+      if (!objetivo) {
+        return;
+      }
+      const nuevoPoligono = insertarPuntoEnBorde(objetivo.poligono, punto);
+      editarLocal(
+        fragmentos.map((f) =>
+          f.id === fragmentoId ? { ...f, poligono: nuevoPoligono, origen: "MANUAL" } : f,
+        ),
+      );
+    },
+    [edicion.segmentando, editarLocal, fragmentos],
+  );
+
   // Atajos de teclado (ignorados mientras se escribe en un campo).
   useEffect(() => {
     const alPresionar = (evento: KeyboardEvent) => {
@@ -218,7 +304,17 @@ export function EditorFragmentos() {
         return;
       }
       const tecla = evento.key.toLowerCase();
-      if ((evento.ctrlKey || evento.metaKey) && tecla === "z") {
+      if ((evento.ctrlKey || evento.metaKey) && tecla === "s") {
+        evento.preventDefault();
+        void guardarPendientes();
+      } else if ((evento.ctrlKey || evento.metaKey) && (tecla === "y" || (evento.shiftKey && tecla === "z"))) {
+        evento.preventDefault();
+        if (puntosDeshechos.length > 0) {
+          rehacerPunto();
+        } else {
+          void edicion.rehacer();
+        }
+      } else if ((evento.ctrlKey || evento.metaKey) && tecla === "z") {
         evento.preventDefault();
         if (trazo.length > 0) {
           quitarUltimoPunto();
@@ -231,10 +327,17 @@ export function EditorFragmentos() {
       } else if (tecla === "delete" || tecla === "backspace") {
         borrarSeleccion();
       } else if (tecla === "escape") {
-        setTrazo([]);
+        if (cambiosPendientes) {
+          void guardarPendientes();
+        }
+        limpiarTrazo();
         setSeleccionados(new Set());
       } else if (tecla === "enter") {
-        cerrarDibujo();
+        if (herramienta === "seleccionar" && cambiosPendientes) {
+          void guardarPendientes();
+        } else {
+          cerrarDibujo();
+        }
       } else if (tecla === "u") {
         unirSeleccion();
       } else if (tecla === "v") {
@@ -247,7 +350,17 @@ export function EditorFragmentos() {
     };
     document.addEventListener("keydown", alPresionar);
     return () => document.removeEventListener("keydown", alPresionar);
-  }, [borrarSeleccion, cerrarDibujo, edicion, quitarUltimoPunto, trazo.length, unirSeleccion]);
+  }, [
+    borrarSeleccion,
+    cerrarDibujo,
+    edicion,
+    limpiarTrazo,
+    puntosDeshechos.length,
+    quitarUltimoPunto,
+    rehacerPunto,
+    trazo.length,
+    unirSeleccion,
+  ]);
 
   const pedirSegmentacion = () => {
     if (fragmentos.length > 0) {
@@ -265,6 +378,7 @@ export function EditorFragmentos() {
   const textoGuardado = {
     guardado: "Guardado",
     guardando: "Guardando...",
+    pendiente: "Sin guardar",
     error: "No se guardó el último cambio",
   }[edicion.estadoGuardado];
 
@@ -275,7 +389,7 @@ export function EditorFragmentos() {
     : guardando
       ? "Guardando el cambio y recalculando tamaños..."
       : null;
-  const ayudaHerramienta = herramienta === "dividir" && modoDivision === "quebrada" ? AYUDA_QUEBRADA : AYUDAS[herramienta];
+  const ayudaHerramienta = AYUDAS[herramienta];
   const minimoPuntos = herramienta === "dibujar" ? 3 : 2;
 
   return (
@@ -328,13 +442,35 @@ export function EditorFragmentos() {
               <button
                 type="button"
                 className="editor__herramienta"
-                onClick={() => void edicion.deshacer()}
-                disabled={ocupado || !edicion.puedeDeshacer}
+                onClick={() => (trazo.length > 0 ? quitarUltimoPunto() : void edicion.deshacer())}
+                disabled={ocupado || (trazo.length === 0 && !edicion.puedeDeshacer)}
                 title="Deshacer (Ctrl + Z)"
               >
                 <Icono nombre="deshacer" />
                 Deshacer
                 <kbd className="editor__tecla">Ctrl Z</kbd>
+              </button>
+              <button
+                type="button"
+                className="editor__herramienta"
+                onClick={() => (puntosDeshechos.length > 0 ? rehacerPunto() : void edicion.rehacer())}
+                disabled={ocupado || (puntosDeshechos.length === 0 && !edicion.puedeRehacer)}
+                title="Rehacer (Ctrl + Y)"
+              >
+                <Icono nombre="rehacer" />
+                Rehacer
+                <kbd className="editor__tecla">Ctrl Y</kbd>
+              </button>
+              <button
+                type="button"
+                className={`editor__herramienta${cambiosPendientes ? " editor__herramienta--activa" : ""}`}
+                onClick={() => void guardarPendientes()}
+                disabled={ocupado || !cambiosPendientes}
+                title="Guardar cambios y actualizar indicadores (Ctrl + S)"
+              >
+                <Icono nombre="hecho" />
+                Guardar
+                <kbd className="editor__tecla">Ctrl S</kbd>
               </button>
               <label className="editor__casilla">
                 <input
@@ -363,48 +499,42 @@ export function EditorFragmentos() {
                 onClicFragmento={alClicFragmento}
                 onClicImagen={alClicImagen}
                 onCerrarTrazo={cerrarDibujo}
+                onEditarPoligono={editarPoligono}
+                onEliminarVertice={eliminarVertice}
+                onAgregarVerticeBorde={agregarVerticeBorde}
               />
             )}
 
             <div className="editor__ayuda-lienzo" role="status">
               <span className="editor__chip-modo">{NOMBRES[herramienta]}</span>
               <span className="editor__ayuda-texto">{mensajeEspera ?? ayudaHerramienta}</span>
-              {herramienta === "dividir" && (
-                <span className="editor__opciones" role="radiogroup" aria-label="Tipo de corte">
-                  {(
-                    [
-                      ["recta", "Línea recta"],
-                      ["quebrada", "Corte libre"],
-                    ] as const
-                  ).map(([valor, texto]) => (
-                    <button
-                      key={valor}
-                      type="button"
-                      role="radio"
-                      aria-checked={modoDivision === valor}
-                      className={`editor__opcion${modoDivision === valor ? " editor__opcion--activa" : ""}`}
-                      onClick={() => {
-                        setModoDivision(valor);
-                        setTrazo([]);
-                      }}
-                    >
-                      {texto}
-                    </button>
-                  ))}
+              {cambiosPendientes && trazo.length === 0 && (
+                <span className="editor__fila">
+                  <Boton onClick={() => void guardarPendientes()} disabled={ocupado}>
+                    Guardar cambios
+                  </Boton>
                 </span>
               )}
-              {trazo.length > 0 && (
+              {(trazo.length > 0 || puntosDeshechos.length > 0) && (
                 <span className="editor__fila">
-                  {(herramienta === "dibujar" || modoDivision === "quebrada") && (
+                  {(herramienta === "dibujar" || herramienta === "dividir") && (
                     <Boton onClick={cerrarDibujo} disabled={ocupado || sinRepetidos(trazo).length < minimoPuntos}>
                       {herramienta === "dibujar" ? "Terminar fragmento" : "Cortar"}
                     </Boton>
                   )}
-                  <Boton variante="secundario" onClick={quitarUltimoPunto} title="Quitar el último punto (Retroceso o Ctrl + Z)">
-                    <Icono nombre="deshacer" />
-                    Quitar punto
-                  </Boton>
-                  <Boton variante="secundario" onClick={() => setTrazo([])} title="Cancelar el trazo (Esc)">
+                  {trazo.length > 0 && (
+                    <Boton variante="secundario" onClick={quitarUltimoPunto} title="Quitar el último punto (Retroceso o Ctrl + Z)">
+                      <Icono nombre="deshacer" />
+                      Quitar punto
+                    </Boton>
+                  )}
+                  {puntosDeshechos.length > 0 && (
+                    <Boton variante="secundario" onClick={rehacerPunto} title="Restaurar el último punto quitado (Ctrl + Y)">
+                      <Icono nombre="rehacer" />
+                      Rehacer punto
+                    </Boton>
+                  )}
+                  <Boton variante="secundario" onClick={limpiarTrazo} title="Cancelar el trazo (Esc)">
                     Cancelar
                   </Boton>
                 </span>
@@ -447,16 +577,11 @@ export function EditorFragmentos() {
                 </p>
               )}
               {detalle?.calibracion && (
-                <div className="editor__escala">
-                  <span className="editor__ayuda">
-                    Escala{" "}
-                    <span className="cifra">{formatearNumero(detalle.calibracion.factor_mm_por_px, 4)} mm/px</span>{" "}
-                    (objeto de {formatearMm(detalle.calibracion.longitud_real_mm)})
-                  </span>
-                  <Boton variante="secundario" onClick={() => navigate(`/analisis/${id}/calibracion`)}>
-                    Recalibrar
-                  </Boton>
-                </div>
+                <p className="editor__ayuda">
+                  Escala{" "}
+                  <span className="cifra">{formatearNumero(detalle.calibracion.factor_mm_por_px, 4)} mm/px</span>{" "}
+                  (objeto de {formatearMm(detalle.calibracion.longitud_real_mm)})
+                </p>
               )}
               {detalle?.region_excluida && (
                 <p className="editor__ayuda">
@@ -519,12 +644,28 @@ export function EditorFragmentos() {
             </section>
 
             <div className="editor__fila">
-              <Boton variante="secundario" onClick={() => navigate(`/analisis/${id}/calibracion`)}>
-                Atrás
+              <Boton
+                variante="secundario"
+                onClick={() => {
+                  void guardarPendientes().then((ok) => {
+                    if (ok) {
+                      navigate(`/analisis/${id}/calibracion`);
+                    }
+                  });
+                }}
+              >
+                <Icono nombre="anterior" />
+                Recalibrar
               </Boton>
               <Boton
                 className="editor__continuar"
-                onClick={() => navigate(`/analisis/${id}/resultados`)}
+                onClick={() => {
+                  void guardarPendientes().then((ok) => {
+                    if (ok) {
+                      navigate(`/analisis/${id}/resultados`);
+                    }
+                  });
+                }}
                 disabled={!resultados || ocupado}
               >
                 Ver resultados

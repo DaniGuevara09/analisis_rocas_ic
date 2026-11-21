@@ -14,7 +14,7 @@ const AREA_MINIMA_PX = 1;
  * Área mínima de un fragmento (px²). La API rechaza los menores (son clics accidentales);
  * el editor usa el mismo valor para avisar antes de guardar.
  */
-export const AREA_MINIMA_FRAGMENTO_PX2 = 20;
+export const AREA_MINIMA_FRAGMENTO_PX2 = 1;
 
 /** Indica si un contorno es demasiado pequeño para ser un fragmento. */
 export function esDiminuto(puntos: Punto[]): boolean {
@@ -160,4 +160,42 @@ export function contienePunto(poligono: Punto[], punto: Punto): boolean {
     }
   });
   return dentro;
+}
+
+/**
+ * Inserta un nuevo vértice en el segmento del borde del polígono más cercano al punto dado.
+ * El nuevo punto se proyecta exactamente sobre la arista seleccionada.
+ */
+export function insertarPuntoEnBorde(poligono: Punto[], clic: Punto): Punto[] {
+  if (poligono.length < 2) {
+    return [...poligono, clic];
+  }
+  let mejorIndice = 0;
+  let mejorDistancia = Number.POSITIVE_INFINITY;
+  let mejorPunto: Punto = clic;
+
+  for (let i = 0; i < poligono.length; i++) {
+    const a = poligono[i];
+    const b = poligono[(i + 1) % poligono.length];
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const largo2 = vx * vx + vy * vy;
+    const t =
+      largo2 > 0
+        ? Math.max(0, Math.min(1, ((clic.x - a.x) * vx + (clic.y - a.y) * vy) / largo2))
+        : 0;
+    const proyectado = { x: a.x + t * vx, y: a.y + t * vy };
+    const distancia = Math.hypot(clic.x - proyectado.x, clic.y - proyectado.y);
+    if (distancia < mejorDistancia) {
+      mejorDistancia = distancia;
+      mejorIndice = i;
+      mejorPunto = proyectado;
+    }
+  }
+
+  return [
+    ...poligono.slice(0, mejorIndice + 1),
+    mejorPunto,
+    ...poligono.slice(mejorIndice + 1),
+  ];
 }

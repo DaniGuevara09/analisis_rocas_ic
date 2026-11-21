@@ -37,6 +37,9 @@ interface Props {
   onClicFragmento: (id: string, aditivo: boolean) => void;
   onClicImagen: (punto: Punto) => void;
   onCerrarTrazo: () => void;
+  onEditarPoligono?: (id: string, poligono: Punto[]) => void;
+  onEliminarVertice?: (id: string, indice: number) => void;
+  onAgregarVerticeBorde?: (id: string, punto: Punto) => void;
 }
 
 interface Vista {
@@ -68,11 +71,22 @@ export function LienzoFragmentos({
   onClicFragmento,
   onClicImagen,
   onCerrarTrazo,
+  onEditarPoligono,
+  onEliminarVertice,
+  onAgregarVerticeBorde,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [espacio, setEspacio] = useState({ ancho: 0, alto: 0 });
   const [vista, setVista] = useState<Vista>({ zoom: 1, x: 0, y: 0 });
   const [etiqueta, setEtiqueta] = useState<Etiqueta | null>(null);
+  const [poligonoArrastrando, setPoligonoArrastrando] = useState<{ id: string; poligono: Punto[] } | null>(null);
+  const arrastradoRef = useRef(false);
+  const clicsMismoPuntoRef = useRef<{ tiempo: number; x: number; y: number; cuenta: number }>({
+    tiempo: 0,
+    x: 0,
+    y: 0,
+    cuenta: 0,
+  });
   const imagen = useImagen(urlImagen);
   const estilo = useMemo(() => leerEstiloFragmentos(), []);
 
@@ -103,10 +117,38 @@ export function LienzoFragmentos({
   };
 
   const alHacerClic = (evento: KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const punto = posicionEnImagen(evento.target.getStage());
-    if (punto) {
-      onClicImagen(punto);
+    const stage = evento.target.getStage();
+    const punto = posicionEnImagen(stage);
+    if (!punto) {
+      return;
     }
+    if (editando) {
+      const puntero = stage?.getPointerPosition();
+      const ahora = performance.now();
+      const previo = clicsMismoPuntoRef.current;
+      const mismoSitio =
+        puntero !== null &&
+        puntero !== undefined &&
+        ahora - previo.tiempo <= 550 &&
+        Math.hypot(puntero.x - previo.x, puntero.y - previo.y) <= 14;
+      const cuenta = mismoSitio ? previo.cuenta + 1 : 1;
+      clicsMismoPuntoRef.current = {
+        tiempo: ahora,
+        x: puntero?.x ?? 0,
+        y: puntero?.y ?? 0,
+        cuenta,
+      };
+      if (cuenta >= 3) {
+        clicsMismoPuntoRef.current.cuenta = 0;
+        onCerrarTrazo();
+        return;
+      }
+      if (cuenta === 2) {
+        // Segundo clic rápido en el mismo punto: no agrega un vértice duplicado y espera el tercer clic.
+        return;
+      }
+    }
+    onClicImagen(punto);
   };
 
   /** Cambia el zoom manteniendo fijo el punto `ancla` (coordenadas de pantalla del lienzo). */
@@ -171,7 +213,6 @@ export function LienzoFragmentos({
           onWheel={alGirarRueda}
           onClick={alHacerClic}
           onTap={alHacerClic}
-          onDblClick={() => editando && onCerrarTrazo()}
           className={clases}
         >
           <Layer>
@@ -191,11 +232,13 @@ export function LienzoFragmentos({
             {mostrarContornos &&
               fragmentos.map((fragmento) => {
                 const seleccionado = seleccionados.has(fragmento.id);
-                const color = seleccionado ? estilo.colorSeleccionado : colorDe(fragmento.id);
+                const color = colorDe(fragmento.id);
+                const poligonoActual =
+                  poligonoArrastrando?.id === fragmento.id ? poligonoArrastrando.poligono : fragmento.poligono;
                 return (
                   <Line
                     key={fragmento.id}
-                    points={aplanar(fragmento.poligono.map((p) => aPantalla(p, ajuste)))}
+                    points={aplanar(poligonoActual.map((p) => aPantalla(p, ajuste)))}
                     closed
                     stroke={color}
                     strokeWidth={seleccionado ? grosor * 2 : grosor}
@@ -214,6 +257,111 @@ export function LienzoFragmentos({
                   />
                 );
               })}
+
+            {mostrarContornos &&
+              !editando &&
+              fragmentos
+                .filter((f) => seleccionados.has(f.id))
+                .map((fragmento) => {
+                  const poligonoActual =
+                    poligonoArrastrando?.id === fragmento.id ? poligonoArrastrando.poligono : fragmento.poligono;
+                  return (
+                    <Line
+                      key={`borde-${fragmento.id}`}
+                      points={aplanar(poligonoActual.map((p) => aPantalla(p, ajuste)))}
+                      closed
+                      fillEnabled={false}
+                      stroke="rgba(0,0,0,0.001)"
+                      strokeWidth={14 / vista.zoom}
+                      listening={onAgregarVerticeBorde !== undefined && mensajeEspera === null}
+                      onClick={(e: KonvaEventObject<MouseEvent>) => {
+                        e.cancelBubble = true;
+                        const punto = posicionEnImagen(e.target.getStage());
+                        if (punto) {
+                          onAgregarVerticeBorde?.(fragmento.id, punto);
+                        }
+                      }}
+                      onTap={(e: KonvaEventObject<TouchEvent>) => {
+                        e.cancelBubble = true;
+                        const punto = posicionEnImagen(e.target.getStage());
+                        if (punto) {
+                          onAgregarVerticeBorde?.(fragmento.id, punto);
+                        }
+                      }}
+                    />
+                  );
+                })}
+
+            {mostrarContornos &&
+              !editando &&
+              fragmentos
+                .filter((f) => seleccionados.has(f.id))
+                .map((fragmento) => {
+                  const color = colorDe(fragmento.id);
+                  const poligonoActual =
+                    poligonoArrastrando?.id === fragmento.id ? poligonoArrastrando.poligono : fragmento.poligono;
+                  return poligonoActual.map((vertice, indice) => {
+                    const p = aPantalla(vertice, ajuste);
+                    const actualizarVertice = (posPantalla: Punto): Punto[] => {
+                      const enImg = aImagen(posPantalla, ajuste);
+                      const limitado = {
+                        x: limitar(enImg.x, 0, anchoImg),
+                        y: limitar(enImg.y, 0, altoImg),
+                      };
+                      return poligonoActual.map((pt, i) => (i === indice ? limitado : pt));
+                    };
+                    return (
+                      <Circle
+                        key={`vertice-${fragmento.id}-${indice}`}
+                        x={p.x}
+                        y={p.y}
+                        radius={radio}
+                        fill={estilo.colorVertice}
+                        stroke={color}
+                        strokeWidth={grosor}
+                        draggable={onEditarPoligono !== undefined && mensajeEspera === null}
+                        dragBoundFunc={(pos: Punto) => ({
+                          x: limitar(pos.x, vista.x, vista.x + ancho * vista.zoom),
+                          y: limitar(pos.y, vista.y, vista.y + alto * vista.zoom),
+                        })}
+                        onMouseDown={() => {
+                          arrastradoRef.current = false;
+                        }}
+                        onClick={(e: KonvaEventObject<MouseEvent>) => {
+                          e.cancelBubble = true;
+                          if (!arrastradoRef.current) {
+                            onEliminarVertice?.(fragmento.id, indice);
+                          }
+                        }}
+                        onTap={(e: KonvaEventObject<TouchEvent>) => {
+                          e.cancelBubble = true;
+                          if (!arrastradoRef.current) {
+                            onEliminarVertice?.(fragmento.id, indice);
+                          }
+                        }}
+                        onDragStart={(e: KonvaEventObject<DragEvent>) => {
+                          e.cancelBubble = true;
+                          arrastradoRef.current = false;
+                          setEtiqueta(null);
+                        }}
+                        onDragMove={(e: KonvaEventObject<DragEvent>) => {
+                          e.cancelBubble = true;
+                          arrastradoRef.current = true;
+                          const nuevo = actualizarVertice({ x: e.target.x(), y: e.target.y() });
+                          setPoligonoArrastrando({ id: fragmento.id, poligono: nuevo });
+                        }}
+                        onDragEnd={(e: KonvaEventObject<DragEvent>) => {
+                          e.cancelBubble = true;
+                          const nuevo = actualizarVertice({ x: e.target.x(), y: e.target.y() });
+                          setPoligonoArrastrando(null);
+                          if (arrastradoRef.current) {
+                            onEditarPoligono?.(fragmento.id, nuevo);
+                          }
+                        }}
+                      />
+                    );
+                  });
+                })}
 
             {trazo.length > 0 && (
               <Line
