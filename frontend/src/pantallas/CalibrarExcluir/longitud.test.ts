@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { aMilimetros, avisoLongitud } from "./longitud";
+import { aMilimetros, avisoLongitud, calcularLongitudEfectivaMm, distanciaLineaPx } from "./longitud";
 
 describe("aMilimetros", () => {
   it("convierte cm y m a mm", () => {
@@ -26,5 +26,25 @@ describe("avisoLongitud", () => {
   it("no avisa en valores habituales ni sin valor", () => {
     expect(avisoLongitud(300)).toBe("");
     expect(avisoLongitud(null)).toBe("");
+  });
+});
+
+describe("distanciaLineaPx y calcularLongitudEfectivaMm", () => {
+  it("calcula la distancia de una línea de 2 puntos", () => {
+    expect(distanciaLineaPx([{ x: 0, y: 0 }])).toBeNull();
+    expect(
+      distanciaLineaPx([
+        { x: 0, y: 0 },
+        { x: 300, y: 400 },
+      ]),
+    ).toBe(500);
+  });
+
+  it("promedia el factor de escala cuando hay dos objetos de referencia", () => {
+    // Objeto 1: 100 px = 200 mm -> f1 = 2.0 mm/px
+    // Objeto 2: 200 px = 600 mm -> f2 = 3.0 mm/px
+    // Factor promedio = 2.5 mm/px -> Longitud efectiva para d1 (100 px) = 250 mm
+    expect(calcularLongitudEfectivaMm(100, 200, 200, 600)).toBeCloseTo(250);
+    expect(calcularLongitudEfectivaMm(100, 200, null, null)).toBe(200);
   });
 });

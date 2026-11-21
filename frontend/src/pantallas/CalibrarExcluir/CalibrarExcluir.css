@@ -66,9 +66,35 @@
   color: var(--color-texto);
 }
 
-.calibrar__modo--linea {
+.calibrar__modo--linea,
+.calibrar__modo--linea2 {
   background: var(--color-resaltado);
   color: var(--color-sobre-acento);
+}
+
+.calibrar__objeto-bloque {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--espacio-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--espacio-2) var(--espacio-3);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-control);
+  background: var(--color-fila-hover);
+}
+
+.calibrar__punto-color {
+  display: inline-block;
+  width: var(--tamano-punto-estado);
+  height: var(--tamano-punto-estado);
+  border-radius: var(--radio-redondo);
+  background: var(--color-trazo-calibracion);
+}
+
+.calibrar__punto-color--secundario {
+  background: var(--color-trazo-calibracion-secundaria);
 }
 
 .calibrar__modo--region {

@@ -16,6 +16,7 @@ export function leerLista(nombre: string): number[] {
 
 export interface EstiloTrazos {
   colorCalibracion: string;
+  colorCalibracionSecundaria: string;
   colorRegion: string;
   rellenoRegion: string;
   colorVertice: string;
@@ -27,6 +28,7 @@ export interface EstiloTrazos {
 export function leerEstiloTrazos(): EstiloTrazos {
   return {
     colorCalibracion: leerToken("--color-trazo-calibracion"),
+    colorCalibracionSecundaria: leerToken("--color-trazo-calibracion-secundaria") || "#00BFA5",
     colorRegion: leerToken("--color-trazo-region"),
     rellenoRegion: leerToken("--color-relleno-region"),
     colorVertice: leerToken("--color-vertice"),

@@ -12,8 +12,10 @@ interface Props {
   urlImagen: string;
   anchoImg: number;
   altoImg: number;
-  /** Extremos de la línea de calibración (0, 1 o 2 puntos), en píxeles de la imagen original. */
+  /** Extremos de la línea de calibración 1 (0, 1 o 2 puntos), en píxeles de la imagen original. */
   linea: Punto[];
+  /** Extremos de la línea de calibración 2 opcional (0, 1 o 2 puntos), en píxeles de la imagen original. */
+  lineaSecundaria?: Punto[];
   /** Vértices de la región excluida, en píxeles de la imagen original. */
   region: Punto[];
   regionCerrada: boolean;
@@ -21,6 +23,7 @@ interface Props {
   aceptaClics: boolean;
   onClicImagen: (punto: Punto) => void;
   onMoverExtremo: (indice: number, punto: Punto) => void;
+  onMoverExtremoSecundario?: (indice: number, punto: Punto) => void;
 }
 
 /** Lienzo Konva: la imagen se ajusta al espacio, pero todo punto se informa en píxeles originales. */
@@ -29,11 +32,13 @@ export function LienzoCalibracion({
   anchoImg,
   altoImg,
   linea,
+  lineaSecundaria = [],
   region,
   regionCerrada,
   aceptaClics,
   onClicImagen,
   onMoverExtremo,
+  onMoverExtremoSecundario,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [espacio, setEspacio] = useState({ ancho: 0, alto: 0 });
@@ -123,19 +128,50 @@ export function LienzoCalibracion({
                   stroke={estilo.colorCalibracion}
                   strokeWidth={estilo.grosor}
                   draggable
-                  dragBoundFunc={(pos) => ({
-                    x: limitar(pos.x, 0, ancho),
-                    y: limitar(pos.y, 0, alto),
-                  })}
-                  onDragMove={(e) =>
-                    onMoverExtremo(indice, aImagen({ x: e.target.x(), y: e.target.y() }, escala))
+                    dragBoundFunc = {(pos: Punto) => ({
+                      x: limitar(pos.x, 0, ancho),
+                      y: limitar(pos.y, 0, alto),
+                    })}
+                    onDragMove = {(e: KonvaEventObject<DragEvent>) =>
+                      onMoverExtremo(indice, aImagen({x: e.target.x(), y: e.target.y() }, escala))
                   }
                 />
               );
             })}
-          </Layer>
-        </Stage>
+
+              {lineaSecundaria.length === 2 && (
+                <Line
+                  points={aplanar(lineaSecundaria.map((p) => aPantalla(p, escala)))}
+                  stroke={estilo.colorCalibracionSecundaria}
+                  strokeWidth={estilo.grosor}
+                  listening={false}
+                />
+              )}
+              {lineaSecundaria.map((extremo, indice) => {
+                const p = aPantalla(extremo, escala);
+                return (
+                  <Circle
+                    key={`extremo-2-${indice}`}
+                    x={p.x}
+                    y={p.y}
+                    radius={estilo.radioVertice}
+                    fill={estilo.colorVertice}
+                    stroke={estilo.colorCalibracionSecundaria}
+                    strokeWidth={estilo.grosor}
+                    draggable={onMoverExtremoSecundario !== undefined}
+                      dragBoundFunc = {(pos: Punto) => ({
+                        x: limitar(pos.x, 0, ancho),
+                        y: limitar(pos.y, 0, alto),
+                      })}
+                      onDragMove = {(e: KonvaEventObject<DragEvent>) =>
+                        onMoverExtremoSecundario?.(indice, aImagen({x: e.target.x(), y: e.target.y() }, escala))
+                  }
+                />
+                );
+            })}
+              </Layer>
+            </Stage>
       )}
-    </div>
-  );
+          </div>
+          );
 }

@@ -1,4 +1,5 @@
 /** Longitud del objeto de referencia: unidades, objetos frecuentes y validación. */
+import type { Punto } from "../../api/tipos";
 
 export type Unidad = "mm" | "cm" | "m";
 
@@ -31,6 +32,34 @@ export function aMilimetros(texto: string, unidad: Unidad): number | null {
     return null;
   }
   return valor * MM_POR_UNIDAD[unidad];
+}
+
+/** Distancia en píxeles de una línea de 2 puntos; null si está incompleta o mide 0. */
+export function distanciaLineaPx(linea: Punto[]): number | null {
+  if (linea.length !== 2) {
+    return null;
+  }
+  const d = Math.hypot(linea[1].x - linea[0].x, linea[1].y - linea[0].y);
+  return d > 0 ? d : null;
+}
+
+/**
+ * Calcula la longitud efectiva en mm para la línea 1 de modo que el factor resultante
+ * (longitud / d1Px) sea el promedio de los factores de los dos objetos de referencia.
+ */
+export function calcularLongitudEfectivaMm(
+  d1Px: number,
+  l1Mm: number,
+  d2Px?: number | null,
+  l2Mm?: number | null,
+): number {
+  if (d2Px != null && d2Px > 0 && l2Mm != null && l2Mm > 0 && d1Px > 0) {
+    const f1 = l1Mm / d1Px;
+    const f2 = l2Mm / d2Px;
+    const factorPromedio = (f1 + f2) / 2;
+    return factorPromedio * d1Px;
+  }
+  return l1Mm;
 }
 
 /** Aviso (no bloquea) si la longitud es poco habitual: suele ser un error de unidad. */
