@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { obtenerSalud, urlImagen } from "../../api/analisis";
+import { obtenerSalud, segmentarConPincel, urlImagen } from "../../api/analisis";
 import type { Fragmento, FragmentoSolicitud, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
@@ -18,6 +18,10 @@ import {
   dividirConTrazo,
   esDiminuto,
   insertarPuntoEnBorde,
+  poligonoDePincel,
+  recortarContraExistentes,
+  trazoEntraEnPoligono,
+  unirConPincel,
   unirPoligonos,
 } from "../../editor/operacionesPoligonos";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
@@ -27,6 +31,8 @@ import "./EditorFragmentos.css";
 const AYUDAS: Record<Herramienta, string> = {
   seleccionar:
     "Arrastre un punto para moverlo, tóquelo para eliminarlo o haga clic en el borde para agregar un punto. Pulse Guardar (Ctrl + S) al finalizar.",
+  pincel:
+    "Pincel mágico: dé un solo toque en una roca o pinte su zona para que la IA la detecte; o pinte atravesando dos o más rocas para unirlas.",
   dibujar:
     "Digitalice el contorno de un fragmento no detectado. Termine con triple clic rápido, Enter o el botón Terminar fragmento.",
   dividir:
@@ -35,14 +41,16 @@ const AYUDAS: Record<Herramienta, string> = {
 
 const NOMBRES: Record<Herramienta, string> = {
   seleccionar: "Seleccionar",
+  pincel: "Pincel mágico",
   dibujar: "Dibujar",
   dividir: "Dividir",
 };
 
 const HERRAMIENTAS: { valor: Herramienta; texto: string; tecla: string; icono: NombreIcono }[] = [
   { valor: "seleccionar", texto: NOMBRES.seleccionar, tecla: "V", icono: "cursor" },
+  { valor: "pincel", texto: NOMBRES.pincel, tecla: "P", icono: "pincel" },
   { valor: "dibujar", texto: NOMBRES.dibujar, tecla: "D", icono: "lapiz" },
-  { valor: "dividir", texto: NOMBRES.dividir, tecla: "C", icono: "tijeras" },
+  { valor: "dividir", texto: NOMBRES.dividir, tecla: "X", icono: "tijeras" },
 ];
 
 /** Quita los vértices repetidos consecutivos (el doble clic agrega el mismo punto dos veces). */
@@ -63,13 +71,15 @@ export function EditorFragmentos() {
   const [puntosDeshechos, setPuntosDeshechos] = useState<Punto[]>([]);
   const [mostrarContornos, setMostrarContornos] = useState(true);
   const [confirmarSegmentar, setConfirmarSegmentar] = useState(false);
+  const [usandoPincel, setUsandoPincel] = useState(false);
+  const [escalaPincel, setEscalaPincel] = useState<number>(0.85);
 
   const limpiarTrazo = useCallback(() => {
     setTrazo([]);
     setPuntosDeshechos([]);
   }, []);
 
-  const ocupado = edicion.estadoGuardado === "guardando" || edicion.segmentando;
+  const ocupado = edicion.estadoGuardado === "guardando" || edicion.segmentando || usandoPincel;
 
   // null = aún no se sabe; el editor avisa si no hay modelo instalado en backend/modelos.
   const [modeloDisponible, setModeloDisponible] = useState<boolean | null>(null);
@@ -297,13 +307,96 @@ export function EditorFragmentos() {
     [edicion.segmentando, editarLocal, fragmentos],
   );
 
-  // Atajos de teclado (ignorados mientras se escribe en un campo).
+  const aplicarPincelMagico = useCallback(
+    async (trazoPincel: Punto[], radioPx: number) => {
+      if (ocupado || trazoPincel.length === 0) {
+        return;
+      }
+      const zonaPincel = poligonoDePincel(trazoPincel, radioPx);
+      if (zonaPincel.length < 3) {
+        return;
+      }
+      // Solo considera rocas cuyo interior fue realmente pintado por el usuario (no solo rozadas en el borde).
+      const tocados = fragmentos.filter((f) => trazoEntraEnPoligono(trazoPincel, f.poligono, zonaPincel));
+
+      // Caso 1: El usuario pintó atravesando 2 o más rocas existentes -> las une en una sola roca.
+      if (tocados.length >= 2) {
+        const union = unirConPincel(
+          tocados.map((f) => f.poligono),
+          zonaPincel,
+        );
+        if (!union) {
+          setError("No se pudieron unir los fragmentos seleccionados por el pincel.");
+          return;
+        }
+        const idsTocados = new Set(tocados.map((f) => f.id));
+        const noTocados = fragmentos.filter((f) => !idsTocados.has(f.id));
+        const recortada = recortarContraExistentes(
+          union,
+          noTocados.map((f) => f.poligono),
+        ) ?? union;
+        await aplicar([...noTocados.map(aSolicitud), { poligono: recortada, origen: "MANUAL" }]);
+        return;
+      }
+
+      // Caso 2: El usuario pintó una zona sin segmentar (o extendió 1 roca hacia una zona sin segmentar).
+      setUsandoPincel(true);
+      setError("");
+      try {
+        let poligonoDetectado: Punto[] | null = null;
+        try {
+          poligonoDetectado = await segmentarConPincel(id, trazoPincel, radioPx);
+        } catch {
+          poligonoDetectado = null;
+        }
+        const candidato =
+          poligonoDetectado && poligonoDetectado.length >= 3 && !esDiminuto(poligonoDetectado)
+            ? poligonoDetectado
+            : zonaPincel;
+
+        // Si el trazo comenzó o terminó dentro de 1 roca existente para extenderla, la une solo con esa roca.
+        if (tocados.length === 1) {
+          const unico = tocados[0];
+          const otros = fragmentos.filter((f) => f.id !== unico.id);
+          const expandido = unirConPincel([unico.poligono, candidato], zonaPincel) ?? unico.poligono;
+          const limpio = recortarContraExistentes(
+            expandido,
+            otros.map((f) => f.poligono),
+          ) ?? expandido;
+          await aplicar([...otros.map(aSolicitud), { id: unico.id, poligono: limpio, origen: "MANUAL" }]);
+          return;
+        }
+
+        // Si pintó una roca nueva en zona no segmentada, le resta cualquier solapamiento con rocas vecinas.
+        const recortado = recortarContraExistentes(
+          candidato,
+          fragmentos.map((f) => f.poligono),
+        );
+        const final = recortado && !esDiminuto(recortado) ? recortado : recortarContraExistentes(zonaPincel, fragmentos.map((f) => f.poligono)) ?? zonaPincel;
+        if (esDiminuto(final)) {
+          return;
+        }
+        await aplicar([...fragmentos.map(aSolicitud), { poligono: final, origen: "MODELO" }]);
+      } finally {
+        setUsandoPincel(false);
+      }
+    },
+    [aplicar, fragmentos, id, ocupado, setError],
+  );
+
+  // Atajos de teclado (ignorados mientras se escribe en un campo de texto).
   useEffect(() => {
     const alPresionar = (evento: KeyboardEvent) => {
-      if (evento.target instanceof HTMLInputElement || evento.target instanceof HTMLTextAreaElement) {
+      if (
+        (evento.target instanceof HTMLInputElement &&
+          evento.target.type !== "checkbox" &&
+          evento.target.type !== "radio") ||
+        evento.target instanceof HTMLTextAreaElement
+      ) {
         return;
       }
       const tecla = evento.key.toLowerCase();
+      const sinModificadores = !evento.ctrlKey && !evento.metaKey && !evento.altKey;
       if ((evento.ctrlKey || evento.metaKey) && tecla === "s") {
         evento.preventDefault();
         void guardarPendientes();
@@ -338,14 +431,18 @@ export function EditorFragmentos() {
         } else {
           cerrarDibujo();
         }
-      } else if (tecla === "u") {
+      } else if (sinModificadores && tecla === "u") {
         unirSeleccion();
-      } else if (tecla === "v") {
+      } else if (sinModificadores && tecla === "v") {
         elegirHerramienta("seleccionar");
-      } else if (tecla === "d") {
+      } else if (sinModificadores && tecla === "p") {
+        elegirHerramienta("pincel");
+      } else if (sinModificadores && tecla === "d") {
         elegirHerramienta("dibujar");
-      } else if (tecla === "c") {
+      } else if (sinModificadores && tecla === "x") {
         elegirHerramienta("dividir");
+      } else if (sinModificadores && tecla === "c") {
+        setMostrarContornos((actual) => !actual);
       }
     };
     document.addEventListener("keydown", alPresionar);
@@ -386,9 +483,11 @@ export function EditorFragmentos() {
   const guardando = edicion.estadoGuardado === "guardando";
   const mensajeEspera = edicion.segmentando
     ? "Segmentando la imagen con el modelo de IA..."
-    : guardando
-      ? "Guardando el cambio y recalculando tamaños..."
-      : null;
+    : usandoPincel
+      ? "Segmentando la zona pintada con el pincel mágico..."
+      : guardando
+        ? "Guardando el cambio y recalculando tamaños..."
+        : null;
   const ayudaHerramienta = AYUDAS[herramienta];
   const minimoPuntos = herramienta === "dibujar" ? 3 : 2;
 
@@ -472,13 +571,14 @@ export function EditorFragmentos() {
                 Guardar
                 <kbd className="editor__tecla">Ctrl S</kbd>
               </button>
-              <label className="editor__casilla">
+              <label className="editor__casilla" title="Mostrar u ocultar contornos (C)">
                 <input
                   type="checkbox"
                   checked={mostrarContornos}
                   onChange={(e) => setMostrarContornos(e.target.checked)}
                 />
                 Contornos
+                <kbd className="editor__tecla">C</kbd>
               </label>
             </div>
 
@@ -492,6 +592,7 @@ export function EditorFragmentos() {
                 seleccionados={seleccionados}
                 regionExcluida={detalle.region_excluida?.poligono ?? null}
                 herramienta={herramienta}
+                escalaPincel={escalaPincel}
                 trazo={trazo}
                 mensajeEspera={mensajeEspera}
                 mostrarContornos={mostrarContornos}
@@ -502,12 +603,35 @@ export function EditorFragmentos() {
                 onEditarPoligono={editarPoligono}
                 onEliminarVertice={eliminarVertice}
                 onAgregarVerticeBorde={agregarVerticeBorde}
+                onTerminarPincel={(trazoPincel, radioPx) => void aplicarPincelMagico(trazoPincel, radioPx)}
               />
             )}
 
             <div className="editor__ayuda-lienzo" role="status">
               <span className="editor__chip-modo">{NOMBRES[herramienta]}</span>
               <span className="editor__ayuda-texto">{mensajeEspera ?? ayudaHerramienta}</span>
+              {herramienta === "pincel" && (
+                <span className="editor__opciones" role="radiogroup" aria-label="Tamaño del pincel">
+                  {(
+                    [
+                      [0.45, "Fino"],
+                      [0.85, "Medio"],
+                      [1.5, "Grueso"],
+                    ] as const
+                  ).map(([valor, texto]) => (
+                    <button
+                      key={texto}
+                      type="button"
+                      role="radio"
+                      aria-checked={escalaPincel === valor}
+                      className={`editor__opcion${escalaPincel === valor ? " editor__opcion--activa" : ""}`}
+                      onClick={() => setEscalaPincel(valor)}
+                    >
+                      {texto}
+                    </button>
+                  ))}
+                </span>
+              )}
               {cambiosPendientes && trazo.length === 0 && (
                 <span className="editor__fila">
                   <Boton onClick={() => void guardarPendientes()} disabled={ocupado}>

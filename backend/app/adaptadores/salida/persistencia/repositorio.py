@@ -28,6 +28,11 @@ class RepositorioPostgreSQL:
         """Persiste el agregado completo (reemplaza calibración, región y fragmentos)."""
         fila, calibracion, region, fragmentos = analisis_a_filas(analisis)
         with self._sesiones.begin() as sesion:
+            sesion.execute(
+                select(TablaAnalisis.id)
+                .where(TablaAnalisis.id == analisis.id)
+                .with_for_update()
+            )
             sesion.merge(fila)
             for tabla in (TablaCalibracion, TablaRegionExcluida, TablaFragmento):
                 sesion.execute(delete(tabla).where(tabla.analisis_id == analisis.id))

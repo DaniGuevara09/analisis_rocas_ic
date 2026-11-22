@@ -18,6 +18,7 @@ class Configuracion(BaseSettings):
     database_url: str = "postgresql+psycopg://rocas:rocas@localhost:5432/analisis_rocas"
     ruta_imagenes: str = "/datos/imagenes"
     ruta_modelo: str = "/app/modelos/best.pt"
+    ruta_modelo_unet: str = "/app/modelos/unet_best.pth"
     segmentacion_confianza: float = 0.25
     segmentacion_imgsz: int = 640
     segmentacion_max_det: int = 1000

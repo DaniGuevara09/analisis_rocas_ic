@@ -21,6 +21,7 @@ from app.aplicacion.casos_de_uso.obtener_resultados import ObtenerResultados
 from app.aplicacion.casos_de_uso.quitar_region_excluida import QuitarRegionExcluida
 from app.aplicacion.casos_de_uso.renombrar_analisis import RenombrarAnalisis
 from app.aplicacion.casos_de_uso.segmentar_analisis import SegmentarAnalisis
+from app.aplicacion.casos_de_uso.segmentar_zona_pincel import SegmentarZonaPincel
 from app.aplicacion.puertos import (
     AlmacenImagenes,
     InspectorImagenes,
@@ -112,6 +113,13 @@ def caso_segmentar(
 ) -> SegmentarAnalisis:
     """Caso de uso SegmentarAnalisis."""
     return SegmentarAnalisis(repo, almacen, segmentador)
+
+
+def caso_pincel_magico(
+    repo: Repositorio, almacen: Almacen, segmentador: SegmentadorDep
+) -> SegmentarZonaPincel:
+    """Caso de uso SegmentarZonaPincel."""
+    return SegmentarZonaPincel(repo, almacen, segmentador)
 
 
 def caso_editar_fragmentos(repo: Repositorio) -> EditarFragmentos:

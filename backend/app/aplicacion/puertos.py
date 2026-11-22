@@ -5,13 +5,17 @@ from typing import Protocol
 from uuid import UUID
 
 from app.dominio.configuracion import ConfiguracionRangos
-from app.dominio.modelo import Analisis, Poligono
+from app.dominio.modelo import Analisis, Poligono, Punto
 
 
 class Segmentador(Protocol):
     """Segmenta una imagen en polígonos de fragmentos (en píxeles). Solo se declara."""
 
     def segmentar(self, imagen: bytes) -> list[Poligono]: ...
+
+    def segmentar_zona(
+        self, imagen: bytes, trazo: list[Punto], radio_px: float
+    ) -> Poligono | None: ...
 
 
 class RepositorioAnalisis(Protocol):

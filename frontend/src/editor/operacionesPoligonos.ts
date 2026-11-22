@@ -21,8 +21,12 @@ export function esDiminuto(puntos: Punto[]): boolean {
   return areaPoligono(puntos) < AREA_MINIMA_FRAGMENTO_PX2;
 }
 
+function redondear(valor: number): number {
+  return Math.round(valor * 2) / 2;
+}
+
 function aAnillo(puntos: Punto[]): Pair[] {
-  return puntos.map((p) => [p.x, p.y]);
+  return puntos.map((p) => [redondear(p.x), redondear(p.y)]);
 }
 
 function desdeAnillo(anillo: Pair[]): Punto[] {
@@ -198,4 +202,213 @@ export function insertarPuntoEnBorde(poligono: Punto[], clic: Punto): Punto[] {
     mejorPunto,
     ...poligono.slice(mejorIndice + 1),
   ];
+}
+
+const LADOS_DISCO_PINCEL = 8;
+
+function discoPincel(centro: Punto, radio: number): Punto[] {
+  const puntos: Punto[] = [];
+  for (let i = 0; i < LADOS_DISCO_PINCEL; i++) {
+    const angulo = (2 * Math.PI * i) / LADOS_DISCO_PINCEL;
+    puntos.push({
+      x: redondear(centro.x + Math.cos(angulo) * radio),
+      y: redondear(centro.y + Math.sin(angulo) * radio),
+    });
+  }
+  return puntos;
+}
+
+/**
+ * Construye una cinta cerrada (contorno exterior) alrededor de una polilínea sin depender de
+ * sweep-line cuando hay muchos puntos, evitando errores numéricos de polygon-clipping.
+ */
+function cintaDeTrazo(trazo: Punto[], radio: number): Punto[] {
+  if (trazo.length === 0) {
+    return [];
+  }
+  if (trazo.length === 1) {
+    return discoPincel(trazo[0], radio);
+  }
+  const izquierda: Punto[] = [];
+  const derecha: Punto[] = [];
+
+  for (let i = 0; i < trazo.length; i++) {
+    const actual = trazo[i];
+    const previo = i > 0 ? trazo[i - 1] :actual;
+    const siguiente = i < trazo.length - 1 ? trazo[i + 1] : actual;
+    const dx = siguiente.x - previo.x;
+    const dy = siguiente.y - previo.y;
+    const largo = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / largo) * radio;
+    const ny = (dx / largo) * radio;
+    izquierda.push({ x: redondear(actual.x + nx), y: redondear(actual.y + ny) });
+    derecha.push({ x: redondear(actual.x - nx), y: redondear(actual.y - ny) });
+  }
+
+  const primero = trazo[0];
+  const segundo = trazo[1];
+  const angInicio = Math.atan2(primero.y - segundo.y, primero.x - segundo.x);
+  const tapaInicio: Punto[] = [
+    {
+      x: redondear(primero.x + Math.cos(angInicio) * radio),
+      y: redondear(primero.y + Math.sin(angInicio) * radio),
+    },
+  ];
+
+  const ultimo = trazo[trazo.length - 1];
+  const penultimo = trazo[trazo.length - 2];
+  const angFin = Math.atan2(ultimo.y - penultimo.y, ultimo.x - penultimo.x);
+  const tapaFin: Punto[] = [
+    {
+      x: redondear(ultimo.x + Math.cos(angFin) * radio),
+      y: redondear(ultimo.y + Math.sin(angFin) * radio),
+    },
+  ];
+
+  return [...izquierda, ...tapaFin, ...derecha.reverse(), ...tapaInicio];
+}
+
+/** Simplifica los puntos del trazo del pincel para que estén separados al menos `pasoMinimo` px. */
+function simplificarTrazoPincel(trazo: Punto[], pasoMinimo: number): Punto[] {
+  if (trazo.length <= 2) {
+    return trazo;
+  }
+  const resultado: Punto[] = [trazo[0]];
+  for (let i = 1; i < trazo.length - 1; i++) {
+    const ultimo = resultado[resultado.length - 1];
+    if (Math.hypot(trazo[i].x - ultimo.x, trazo[i].y - ultimo.y) >= pasoMinimo) {
+      resultado.push(trazo[i]);
+    }
+  }
+  const final = trazo[trazo.length - 1];
+  if (!cercaDe(resultado[resultado.length - 1], final, 1)) {
+    resultado.push(final);
+  }
+  return resultado;
+}
+
+/** Construye el polígono continuo barrido por un trazo de pincel con radio en píxeles.
+ * Si el trazo forma un lazo que rodea una roca, devuelve el contorno relleno en lugar de una cinta hueca.
+ */
+export function poligonoDePincel(trazo: Punto[], radio: number): Punto[] {
+  const r = Math.max(2, Math.round(radio));
+  if (trazo.length === 0) {
+    return [];
+  }
+  const simplificado = simplificarTrazoPincel(trazo, Math.max(4, r * 0.75));
+  if (simplificado.length >= 5) {
+    const xs = simplificado.map((p) => p.x);
+    const ys = simplificado.map((p) => p.y);
+    const diag = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const distCierre = Math.hypot(
+      simplificado[simplificado.length - 1].x - simplificado[0].x,
+      simplificado[simplificado.length - 1].y - simplificado[0].y,
+    );
+    const areaLazo = areaPoligono(simplificado);
+    const perimetro = simplificado
+      .slice(1)
+      .reduce((s, p, i) => s + Math.hypot(p.x - simplificado[i].x, p.y - simplificado[i].y), 0);
+    if (
+      diag >= 12 &&
+      distCierre <= Math.max(r * 3.5, diag * 0.5) &&
+      areaLazo > Math.max(120, perimetro * r * 0.4)
+    ) {
+      return simplificado.map((p) => ({ x: redondear(p.x), y: redondear(p.y) }));
+    }
+  }
+  return cintaDeTrazo(simplificado, r);
+}
+
+/** Indica si dos polígonos se solapan o se tocan (protegido contra errores de sweep-line). */
+export function poligonosSeTocan(a: Punto[], b: Punto[]): boolean {
+  if (a.length < 3 || b.length < 3) {
+    return false;
+  }
+  try {
+    const inter = exteriores(polygonClipping.intersection([aAnillo(a)], [aAnillo(b)]));
+    return inter.length > 0;
+  } catch {
+    return a.some((p) => contienePunto(b, p)) || b.some((p) => contienePunto(a, p));
+  }
+}
+
+/**
+ * Indica si el usuario pintó intencionalmente dentro de un fragmento (el eje del trazo
+ * entra en el polígono o el pincel cubre una fracción significativa del fragmento).
+ */
+export function trazoEntraEnPoligono(trazo: Punto[], poligono: Punto[], zonaPincel: Punto[]): boolean {
+  if (poligono.length < 3 || trazo.length === 0) {
+    return false;
+  }
+  if (trazo.some((p) => contienePunto(poligono, p))) {
+    return true;
+  }
+  if (zonaPincel.length < 3) {
+    return false;
+  }
+  try {
+    const inter = exteriores(polygonClipping.intersection([aAnillo(poligono)], [aAnillo(zonaPincel)]));
+    if (inter.length === 0) {
+      return false;
+    }
+    const areaInter = inter.reduce((s, p) => s + areaPoligono(p), 0);
+    const areaFrag = areaPoligono(poligono);
+    return areaFrag > 0 && areaInter / areaFrag >= 0.3;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Recorta un polígono nuevo restándole los fragmentos vecinos ya existentes uno por uno
+ * de forma segura para que no invada ni fusione rocas adyacentes.
+ */
+export function recortarContraExistentes(nuevo: Punto[], existentes: Punto[][]): Punto[] | null {
+  if (nuevo.length < 3) {
+    return null;
+  }
+  let actual = nuevo;
+  for (const vecino of existentes) {
+    if (vecino.length < 3 || !poligonosSeTocan(actual, vecino)) {
+      continue;
+    }
+    try {
+      const piezas = exteriores(polygonClipping.difference([aAnillo(actual)], [aAnillo(vecino)]));
+      if (piezas.length === 0) {
+        return null;
+      }
+      actual = piezas.reduce((mayor, p) => (areaPoligono(p) > areaPoligono(mayor) ? p : mayor));
+    } catch {
+      // Si polygon-clipping falla por precisión numérica con un vecino, conserva el contorno actual.
+    }
+  }
+  return actual;
+}
+
+/**
+ * Une los polígonos tocados por el pincel mágico en una sola roca (uniendo de dos en dos
+ * para evitar fallos de precisión en SweepLine).
+ */
+export function unirConPincel(poligonos: Punto[][], zonaPincel: Punto[]): Punto[] | null {
+  if (poligonos.length === 0) {
+    return null;
+  }
+  try {
+    if (poligonos.length >= 2) {
+      const directa = unirPoligonos(poligonos);
+      if (directa) {
+        return directa;
+      }
+    }
+    let acumulado = zonaPincel;
+    for (const pol of poligonos) {
+      const piezas = exteriores(polygonClipping.union([aAnillo(acumulado)], [aAnillo(pol)]));
+      if (piezas.length > 0) {
+        acumulado = piezas.reduce((mayor, p) => (areaPoligono(p) > areaPoligono(mayor) ? p : mayor));
+      }
+    }
+    return acumulado;
+  } catch {
+    return poligonos[0];
+  }
 }

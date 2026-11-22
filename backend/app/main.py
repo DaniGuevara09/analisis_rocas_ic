@@ -58,6 +58,7 @@ def crear_segmentador(config: Configuracion) -> Segmentador:
             confianza=config.segmentacion_confianza,
             imgsz=config.segmentacion_imgsz,
             max_det=config.segmentacion_max_det,
+            ruta_unet=config.ruta_modelo_unet,
         )
     except Exception as error:  # noqa: BLE001 - la app debe arrancar aunque falle el modelo
         registro.exception("No se pudo cargar el modelo")

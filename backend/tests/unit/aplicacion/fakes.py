@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app.dominio.configuracion import ConfiguracionRangos
 from app.dominio.errores import FormatoImagenNoValido
-from app.dominio.modelo import Analisis, Poligono
+from app.dominio.modelo import Analisis, Poligono, Punto
 
 CABECERA_JPG = b"\xff\xd8\xff"
 CABECERA_PNG = b"\x89PNG"
@@ -79,6 +79,13 @@ class SegmentadorFalso:
         self.llamadas += 1
         self.ultima_imagen = imagen
         return list(self.poligonos)
+
+    def segmentar_zona(
+        self, imagen: bytes, trazo: list[Punto], radio_px: float
+    ) -> Poligono | None:
+        self.llamadas += 1
+        self.ultima_imagen = imagen
+        return self.poligonos[0] if self.poligonos else None
 
 
 class RepositorioConfiguracionFalso:

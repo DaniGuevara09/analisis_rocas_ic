@@ -113,6 +113,20 @@ export async function segmentar(id: string): Promise<Fragmento[]> {
   return (await respuesta.json()) as Fragmento[];
 }
 
+/** Segmenta con IA la región pintada con el pincel mágico; devuelve el polígono o null. */
+export async function segmentarConPincel(
+  id: string,
+  trazo: Punto[],
+  radioPx: number,
+): Promise<Punto[] | null> {
+  const respuesta = await solicitar(
+    `/analisis/${id}/pincel-magico`,
+    conJson("POST", { trazo, radio_px: radioPx }),
+  );
+  const datos = (await respuesta.json()) as { poligono: Punto[] | null };
+  return datos.poligono;
+}
+
 /** Guarda la lista completa de fragmentos editada. */
 export async function guardarFragmentos(
   id: string,

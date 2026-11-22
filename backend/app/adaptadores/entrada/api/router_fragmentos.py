@@ -9,12 +9,16 @@ from fastapi import APIRouter, Depends, Response
 from app.adaptadores.entrada.api.dependencias import (
     caso_editar_fragmentos,
     caso_obtener,
+    caso_pincel_magico,
     caso_resultados,
     caso_segmentar,
 )
 from app.adaptadores.entrada.api.esquemas import (
     FragmentoEsquema,
     FragmentosSolicitud,
+    PincelMagicoRespuesta,
+    PincelMagicoSolicitud,
+    PuntoEsquema,
     ResultadosEsquema,
     a_fragmentos,
     a_resultados,
@@ -25,6 +29,7 @@ from app.aplicacion.casos_de_uso.editar_fragmentos import EditarFragmentos, Frag
 from app.aplicacion.casos_de_uso.obtener_analisis import ObtenerAnalisis
 from app.aplicacion.casos_de_uso.obtener_resultados import ObtenerResultados
 from app.aplicacion.casos_de_uso.segmentar_analisis import SegmentarAnalisis
+from app.aplicacion.casos_de_uso.segmentar_zona_pincel import SegmentarZonaPincel
 from app.dominio.modelo import OrigenFragmento, Punto
 
 BOM_UTF8 = "\ufeff"  # marca de orden de bytes: Excel detecta UTF-8 por ella
@@ -44,6 +49,22 @@ def segmentar(
     return a_fragmentos(obtener.ejecutar(id), fragmentos)
 
 
+@router.post("/pincel-magico")
+def pincel_magico(
+    id: UUID,
+    cuerpo: PincelMagicoSolicitud,
+    caso: Annotated[SegmentarZonaPincel, Depends(caso_pincel_magico)],
+) -> PincelMagicoRespuesta:
+    """Segmenta con IA la zona pintada con el pincel mágico."""
+    puntos = [Punto(p.x, p.y) for p in cuerpo.trazo]
+    poligono = caso.ejecutar(id, puntos, cuerpo.radio_px)
+    return PincelMagicoRespuesta(
+        poligono=None
+        if poligono is None
+        else [PuntoEsquema(x=p.x, y=p.y) for p in poligono.puntos]
+    )
+
+
 @router.put("/fragmentos")
 def editar_fragmentos(
     id: UUID,
@@ -52,13 +73,23 @@ def editar_fragmentos(
     obtener: Annotated[ObtenerAnalisis, Depends(caso_obtener)],
 ) -> list[FragmentoEsquema]:
     """Reemplaza la lista completa de fragmentos editada por el operador."""
+    analisis_actual = obtener.ejecutar(id)
+    ancho_max = float(analisis_actual.imagen.ancho_px)
+    alto_max = float(analisis_actual.imagen.alto_px)
     editados = [
         FragmentoEditado(
             id=f.id,
-            puntos=[Punto(p.x, p.y) for p in f.poligono],
+            puntos=[
+                Punto(
+                    min(max(float(p.x), 0.0), ancho_max),
+                    min(max(float(p.y), 0.0), alto_max),
+                )
+                for p in f.poligono
+            ],
             origen=OrigenFragmento(f.origen),
         )
         for f in cuerpo.fragmentos
+        if len(f.poligono) >= 3
     ]
     fragmentos = caso.ejecutar(id, editados)
     return a_fragmentos(obtener.ejecutar(id), fragmentos)

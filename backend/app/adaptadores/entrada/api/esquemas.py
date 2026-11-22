@@ -113,6 +113,19 @@ class FragmentosSolicitud(BaseModel):
     fragmentos: list[FragmentoSolicitud]
 
 
+class PincelMagicoSolicitud(BaseModel):
+    """Cuerpo de POST /analisis/{id}/pincel-magico."""
+
+    trazo: list[PuntoEsquema]
+    radio_px: Coordenada = 18.0
+
+
+class PincelMagicoRespuesta(BaseModel):
+    """Polígono detectado por el pincel mágico (null si no se encontró contorno)."""
+
+    poligono: list[PuntoEsquema] | None
+
+
 class PuntoCurvaEsquema(BaseModel):
     """Punto de la curva granulométrica."""
 

@@ -10,7 +10,7 @@ import { aImagen, aPantalla, aplanar, escalaAjuste, limitar } from "./geometria"
 import { useImagen } from "./useImagen";
 import "./LienzoFragmentos.css";
 
-export type Herramienta = "seleccionar" | "dibujar" | "dividir";
+export type Herramienta = "seleccionar" | "dibujar" | "dividir" | "pincel";
 
 const ZOOM_MINIMO = 1;
 const ZOOM_MAXIMO = 12;
@@ -27,6 +27,8 @@ interface Props {
   seleccionados: Set<string>;
   regionExcluida: Punto[] | null;
   herramienta: Herramienta;
+  /** Escala de grosor del pincel mágico (p. ej. 0.5 = fino, 1 = medio, 1.8 = grueso). */
+  escalaPincel?: number;
   /** Vértices del fragmento que se dibuja o extremos de la línea de división (px de la imagen). */
   trazo: Punto[];
   mostrarContornos: boolean;
@@ -40,6 +42,7 @@ interface Props {
   onEditarPoligono?: (id: string, poligono: Punto[]) => void;
   onEliminarVertice?: (id: string, indice: number) => void;
   onAgregarVerticeBorde?: (id: string, punto: Punto) => void;
+  onTerminarPincel?: (trazo: Punto[], radioPx: number) => void;
 }
 
 interface Vista {
@@ -64,6 +67,7 @@ export function LienzoFragmentos({
   seleccionados,
   regionExcluida,
   herramienta,
+  escalaPincel = 1,
   trazo,
   mostrarContornos,
   mensajeEspera = null,
@@ -74,12 +78,16 @@ export function LienzoFragmentos({
   onEditarPoligono,
   onEliminarVertice,
   onAgregarVerticeBorde,
+  onTerminarPincel,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [espacio, setEspacio] = useState({ ancho: 0, alto: 0 });
   const [vista, setVista] = useState<Vista>({ zoom: 1, x: 0, y: 0 });
   const [etiqueta, setEtiqueta] = useState<Etiqueta | null>(null);
   const [poligonoArrastrando, setPoligonoArrastrando] = useState<{ id: string; poligono: Punto[] } | null>(null);
+  const [trazoPincel, setTrazoPincel] = useState<Punto[]>([]);
+  const [cursorPincel, setCursorPincel] = useState<Punto | null>(null);
+  const pintandoRef = useRef(false);
   const arrastradoRef = useRef(false);
   const clicsMismoPuntoRef = useRef<{ tiempo: number; x: number; y: number; cuenta: number }>({
     tiempo: 0,
@@ -106,6 +114,8 @@ export function LienzoFragmentos({
   const ancho = anchoImg * ajuste;
   const alto = altoImg * ajuste;
   const editando = herramienta !== "seleccionar";
+  const radioBasePx = Math.max(4, Math.min(anchoImg, altoImg) * 0.009);
+  const radioPincelPx = Math.max(2, Math.round((radioBasePx * escalaPincel) / Math.sqrt(vista.zoom)));
 
   const posicionEnImagen = (stage: Konva.Stage | null): Punto | null => {
     const relativa = stage?.getRelativePointerPosition();
@@ -116,7 +126,56 @@ export function LienzoFragmentos({
     return { x: limitar(punto.x, 0, anchoImg), y: limitar(punto.y, 0, altoImg) };
   };
 
+  const iniciarPincel = (evento: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (herramienta !== "pincel" || mensajeEspera !== null) {
+      return;
+    }
+    const punto = posicionEnImagen(evento.target.getStage());
+    if (punto) {
+      pintandoRef.current = true;
+      setCursorPincel(punto);
+      setTrazoPincel([punto]);
+    }
+  };
+
+  const moverPincel = (evento: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (herramienta !== "pincel") {
+      return;
+    }
+    const punto = posicionEnImagen(evento.target.getStage());
+    if (!punto) {
+      return;
+    }
+    setCursorPincel(punto);
+    if (!pintandoRef.current) {
+      return;
+    }
+    setTrazoPincel((actual) => {
+      const ultimo = actual[actual.length - 1];
+      if (ultimo && Math.hypot(punto.x - ultimo.x, punto.y - ultimo.y) < 2) {
+        return actual;
+      }
+      return [...actual, punto];
+    });
+  };
+
+  const finalizarPincel = () => {
+    if (herramienta !== "pincel" || !pintandoRef.current) {
+      return;
+    }
+    pintandoRef.current = false;
+    setTrazoPincel((actual) => {
+      if (actual.length > 0) {
+        onTerminarPincel?.(actual, radioPincelPx);
+      }
+      return [];
+    });
+  };
+
   const alHacerClic = (evento: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (herramienta === "pincel") {
+      return;
+    }
     const stage = evento.target.getStage();
     const punto = posicionEnImagen(stage);
     if (!punto) {
@@ -213,6 +272,13 @@ export function LienzoFragmentos({
           onWheel={alGirarRueda}
           onClick={alHacerClic}
           onTap={alHacerClic}
+          onMouseDown={iniciarPincel}
+          onMouseMove={moverPincel}
+          onMouseUp={finalizarPincel}
+          onMouseLeave={finalizarPincel}
+          onTouchStart={iniciarPincel}
+          onTouchMove={moverPincel}
+          onTouchEnd={finalizarPincel}
           className={clases}
         >
           <Layer>
@@ -392,6 +458,39 @@ export function LienzoFragmentos({
                 />
               );
             })}
+
+            {herramienta === "pincel" && cursorPincel && trazoPincel.length === 0 && (
+              <Circle
+                x={aPantalla(cursorPincel, ajuste).x}
+                y={aPantalla(cursorPincel, ajuste).y}
+                radius={radioPincelPx * ajuste}
+                fill={conAlfa(estilo.colorDibujo, 0.22)}
+                stroke={estilo.colorDibujo}
+                strokeWidth={grosor}
+                listening={false}
+              />
+            )}
+            {trazoPincel.length === 1 && (
+              <Circle
+                x={aPantalla(trazoPincel[0], ajuste).x}
+                y={aPantalla(trazoPincel[0], ajuste).y}
+                radius={radioPincelPx * ajuste}
+                fill={conAlfa(estilo.colorDibujo, 0.45)}
+                stroke={estilo.colorDibujo}
+                strokeWidth={grosor}
+                listening={false}
+              />
+            )}
+            {trazoPincel.length >= 2 && (
+              <Line
+                points={aplanar(trazoPincel.map((p) => aPantalla(p, ajuste)))}
+                stroke={conAlfa(estilo.colorDibujo, 0.48)}
+                strokeWidth={radioPincelPx * ajuste * 2}
+                lineCap="round"
+                lineJoin="round"
+                listening={false}
+              />
+            )}
           </Layer>
         </Stage>
       )}
