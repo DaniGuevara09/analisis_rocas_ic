@@ -2,15 +2,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { guardarFragmentos, obtenerAnalisis, obtenerResultados, segmentar } from "../../api/analisis";
 import { ErrorApi, mensajeDeError } from "../../api/errores";
-import type { AnalisisDetalle, Fragmento, FragmentoSolicitud, Resultados } from "../../api/tipos";
+import type { AnalisisDetalle, Fragmento, FragmentoSolicitud, OrigenFragmento, Punto, Resultados } from "../../api/tipos";
 
 /** Máximo de pasos que se pueden deshacer. */
 const LIMITE_HISTORIAL = 50;
+let secuenciaLocal = 0;
 
 export type EstadoGuardado = "guardado" | "guardando" | "pendiente" | "error";
 
+export function crearFragmentoLocal(poligono: Punto[], origen: OrigenFragmento = "MANUAL"): Fragmento {
+  secuenciaLocal += 1;
+  return {
+    id: `temp-${secuenciaLocal}`,
+    poligono,
+    origen,
+    diametro_equivalente_mm: null,
+  };
+}
+
 export function aSolicitud(fragmento: Fragmento): FragmentoSolicitud {
-  return { id: fragmento.id, poligono: fragmento.poligono, origen: fragmento.origen };
+  return {
+    ...(fragmento.id.startsWith("temp-") ? {} : { id: fragmento.id }),
+    poligono: fragmento.poligono,
+    origen: fragmento.origen,
+  };
 }
 
 /**
@@ -124,6 +139,15 @@ export function useEdicionFragmentos(id: string) {
     return ok;
   }, [cambiosPendientes, fragmentos, persistir]);
 
+  /** Guarda cambios pendientes (si existen) y recalcula indicadores preliminares. */
+  const calcularIndicadores = useCallback(async (): Promise<boolean> => {
+    if (cambiosPendientes) {
+      return await guardarPendientes();
+    }
+    await refrescarResultados(fragmentos);
+    return true;
+  }, [cambiosPendientes, fragmentos, guardarPendientes, refrescarResultados]);
+
   const deshacer = useCallback(async () => {
     const anterior = historial[historial.length - 1];
     if (!anterior) {
@@ -191,6 +215,7 @@ export function useEdicionFragmentos(id: string) {
     aplicar,
     editarLocal,
     guardarPendientes,
+    calcularIndicadores,
     deshacer,
     rehacer,
     segmentarAutomatico,

@@ -1,4 +1,4 @@
-"""Módulo opcional U-Net Dual-Head (foreground + bordes) para refinar contornos y asistir al pincel."""
+"""Módulo opcional U-Net Dual-Head (foreground + bordes) para refinar contornos y pincel."""
 
 from collections.abc import Sequence
 
@@ -15,9 +15,9 @@ _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 def _construir_arquitectura():
     """Construye UNetDualHead con los mismos nombres de capa que `unet_best.pth`."""
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
+    import torch  # type: ignore[import-not-found]
+    import torch.nn as nn  # type: ignore[import-not-found]
+    import torch.nn.functional as F  # type: ignore[import-not-found]
 
     class DoubleConv(nn.Module):
         def __init__(self, in_ch: int, out_ch: int, residual: bool = False) -> None:
@@ -62,7 +62,9 @@ def _construir_arquitectura():
             return self.conv(torch.cat([skip, x], dim=1))
 
     class UNetDualHead(nn.Module):
-        def __init__(self, in_channels: int = 3, features: tuple[int, ...] = (64, 128, 256, 512)) -> None:
+        def __init__(
+            self, in_channels: int = 3, features: tuple[int, ...] = (64, 128, 256, 512)
+        ) -> None:
             super().__init__()
             f = features
             self.enc0 = DoubleConv(in_channels, f[0], residual=True)
@@ -95,28 +97,41 @@ class RefinadorUNet:
     """Carga `unet_best.pth` una vez y proporciona mapas de foreground y bordes."""
 
     def __init__(self, ruta_pesos: str, img_size: int = 512) -> None:
-        import torch
+        import torch  # type: ignore[import-not-found]
 
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._sz = img_size
         self._model = _construir_arquitectura().to(self._device).eval()
         checkpoint = torch.load(ruta_pesos, map_location=self._device, weights_only=False)
-        estado = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+        estado = (
+            checkpoint.get("model_state_dict", checkpoint)
+            if isinstance(checkpoint, dict)
+            else checkpoint
+        )
         self._model.load_state_dict(estado)
 
-    def mapas_probabilidad(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Devuelve (fg_prob, bd_prob) en resolución original del array RGB."""
-        import cv2
-        import torch
+    def mapas_probabilidad_nativas(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Devuelve (fg_prob, bd_prob) en resolución interna (`img_size`×`img_size`)."""
+        import cv2  # type: ignore[import-not-found]
+        import torch  # type: ignore[import-not-found]
 
-        h, w = img_rgb.shape[:2]
-        x = cv2.resize(img_rgb, (self._sz, self._sz)).astype(np.float32) / 255.0
+        x = cv2.resize(img_rgb, (self._sz, self._sz), interpolation=cv2.INTER_AREA).astype(
+            np.float32
+        ) / 255.0
         x = ((x - _MEAN) / _STD).transpose(2, 0, 1)
         tensor = torch.from_numpy(x).unsqueeze(0).to(self._device)
-        with torch.no_grad():
+        with torch.inference_mode():
             fl, bl = self._model(tensor)
         fg = torch.sigmoid(fl.float()).squeeze().cpu().numpy()
         bd = torch.sigmoid(bl.float()).squeeze().cpu().numpy()
+        return fg, bd
+
+    def mapas_probabilidad(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Devuelve (fg_prob, bd_prob) en resolución original del array RGB."""
+        import cv2  # type: ignore[import-not-found]
+
+        h, w = img_rgb.shape[:2]
+        fg, bd = self.mapas_probabilidad_nativas(img_rgb)
         if fg.shape != (h, w):
             fg = cv2.resize(fg, (w, h), interpolation=cv2.INTER_LINEAR)
             bd = cv2.resize(bd, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -126,7 +141,7 @@ class RefinadorUNet:
         self, foto: Image.Image, trazo: Sequence[Punto], radio_px: float
     ) -> Poligono | None:
         """Usa el mapa de bordes aprendido por U-Net + Watershed para segmentar un toque o trazo."""
-        import cv2
+        import cv2  # type: ignore[import-not-found]
 
         if not trazo:
             return None
@@ -140,7 +155,7 @@ class RefinadorUNet:
         img_rgb = np.array(recorte, dtype=np.uint8)
         fg_prob, bd_prob = self.mapas_probabilidad(img_rgb)
 
-        # La elevación de Watershed combina la probabilidad de borde (grietas) y ausencia de foreground.
+        # La elevación de Watershed combina probabilidad de borde (grietas) y fondo.
         borde_u8 = np.clip((bd_prob * 0.8 + (1.0 - fg_prob) * 0.2) * 255.0, 0, 255).astype(np.uint8)
         borde_3c = cv2.cvtColor(borde_u8, cv2.COLOR_GRAY2BGR)
 
@@ -198,25 +213,56 @@ class RefinadorUNet:
         poligonos = poligonos_desde_contornos(contorno_img, ancho, alto)
         return poligonos[0] if poligonos else None
 
-    def refinar_mascaras(self, img_rgb: np.ndarray, mascaras: list[np.ndarray]) -> list[np.ndarray]:
-        """Refina los contornos de las máscaras de YOLO usando los mapas de U-Net (banda de 3 px)."""
-        import cv2
+    def refinar_mascara_recorte(
+        self,
+        mascara: np.ndarray,
+        fg_recorte: np.ndarray,
+        bd_recorte: np.ndarray | None = None,
+        radio_expand: int = 2,
+        radio_recorte: int = 1,
+    ) -> np.ndarray:
+        """Ajusta el contorno de una roca sin dividirla ni invadir vecinas."""
+        import cv2  # type: ignore[import-not-found]
 
+        m_bin = mascara.astype(np.uint8) > 0
+        k_in_lado = max(3, radio_recorte * 2 + 1)
+        k_out_lado = max(3, radio_expand * 2 + 1)
+        k_in = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_in_lado, k_in_lado))
+        k_out = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_out_lado, k_out_lado))
+
+        m_u8 = m_bin.astype(np.uint8)
+        interior = cv2.erode(m_u8, k_in) > 0
+        if not np.any(interior):
+            interior = m_bin
+        exterior = cv2.dilate(m_u8, k_out) > 0
+
+        borde_interno = m_bin & (~interior)
+        anillo_ext = exterior & (~m_bin)
+
+        if bd_recorte is not None:
+            mantiene_borde = borde_interno & (fg_recorte > 0.45) & (bd_recorte < 0.55)
+            expande = anillo_ext & (fg_recorte > 0.55) & (bd_recorte < 0.42)
+        else:
+            mantiene_borde = borde_interno & (fg_recorte > 0.45)
+            expande = anillo_ext & (fg_recorte > 0.55)
+
+        ajustada = interior | mantiene_borde | expande
+        n_comp, etiquetas, stats, _ = cv2.connectedComponentsWithStats(ajustada.astype(np.uint8))
+        if n_comp > 2:
+            # Conservar la componente anclada al núcleo original de YOLO.
+            etiquetas_centro = etiquetas[interior]
+            etiquetas_centro = etiquetas_centro[etiquetas_centro > 0]
+            if len(etiquetas_centro) > 0:
+                valores, cuentas = np.unique(etiquetas_centro, return_counts=True)
+                elegida = int(valores[np.argmax(cuentas)])
+            else:
+                elegida = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            ajustada = etiquetas == elegida
+        return ajustada.astype(np.uint8)
+
+    def refinar_mascaras(self, img_rgb: np.ndarray, mascaras: list[np.ndarray]) -> list[np.ndarray]:
+        """Refina los contornos de las máscaras de YOLO usando los mapas de U-Net."""
         if not mascaras:
             return mascaras
-        fg_prob, _bd_prob = self.mapas_probabilidad(img_rgb)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        refinadas: list[np.ndarray] = []
-        for mascara in mascaras:
-            m = mascara.astype(np.uint8)
-            interior = cv2.erode(m, kernel) > 0
-            exterior = cv2.dilate(m, kernel) > 0
-            anillo = exterior & (~interior)
-            ajustada = interior | (anillo & (fg_prob > 0.5))
-            n_comp, etiquetas, stats, _ = cv2.connectedComponentsWithStats(ajustada.astype(np.uint8))
-            if n_comp > 2:
-                # Conservar la componente principal de la roca (ignorando el fondo 0).
-                mayor = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-                ajustada = etiquetas == mayor
-            refinadas.append(ajustada.astype(np.uint8))
-        return refinadas
+        fg_prob, bd_prob = self.mapas_probabilidad(img_rgb)
+        return [self.refinar_mascara_recorte(m, fg_prob, bd_prob) for m in mascaras]

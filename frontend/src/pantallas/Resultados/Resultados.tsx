@@ -10,6 +10,7 @@ import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
 import { colorPorFragmento, LeyendaRangos, textoRango } from "../../componentes/LeyendaRangos";
 import { MensajeError } from "../../componentes/MensajeError";
+import { precargarImagen } from "../../editor/useImagen";
 import { GraficoCurva } from "../../graficos/GraficoCurva";
 import { GraficoHistograma } from "../../graficos/GraficoHistograma";
 import { VistaFragmentos } from "../../graficos/VistaFragmentos";
@@ -27,6 +28,9 @@ export function Resultados() {
   const exportarPdf = () => window.print();
 
   useEffect(() => {
+    if (id) {
+      void precargarImagen(urlImagen(id));
+    }
     Promise.all([obtenerAnalisis(id), obtenerResultados(id)])
       .then(([datos, calculo]) => {
         setDetalle(datos);

@@ -42,11 +42,10 @@ router = APIRouter(prefix="/analisis/{id}")
 def segmentar(
     id: UUID,
     caso: Annotated[SegmentarAnalisis, Depends(caso_segmentar)],
-    obtener: Annotated[ObtenerAnalisis, Depends(caso_obtener)],
 ) -> list[FragmentoEsquema]:
     """Segmenta la imagen con el modelo y reemplaza los fragmentos."""
-    fragmentos = caso.ejecutar(id)
-    return a_fragmentos(obtener.ejecutar(id), fragmentos)
+    analisis, fragmentos = caso.ejecutar_con_analisis(id)
+    return a_fragmentos(analisis, fragmentos)
 
 
 @router.post("/pincel-magico")
@@ -91,8 +90,8 @@ def editar_fragmentos(
         for f in cuerpo.fragmentos
         if len(f.poligono) >= 3
     ]
-    fragmentos = caso.ejecutar(id, editados)
-    return a_fragmentos(obtener.ejecutar(id), fragmentos)
+    analisis, fragmentos = caso.ejecutar_con_analisis(id, editados)
+    return a_fragmentos(analisis, fragmentos)
 
 
 @router.get("/resultados")

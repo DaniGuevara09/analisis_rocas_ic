@@ -10,6 +10,7 @@ import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
 import { MensajeError } from "../../componentes/MensajeError";
 import { LienzoCalibracion } from "../../editor/LienzoCalibracion";
+import { precargarImagen } from "../../editor/useImagen";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
 import {
   aMilimetros,
@@ -74,6 +75,9 @@ export function CalibrarExcluir() {
 
   // Reanudar: se dibuja lo que ya guarda el servidor (también al refrescar la página).
   useEffect(() => {
+    if (id) {
+      void precargarImagen(urlImagen(id));
+    }
     obtenerAnalisis(id)
       .then((datos) => {
         setDetalle(datos);

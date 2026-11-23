@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "../../api/analisis";
 import type { AnalisisDetalle, Fragmento, Resultados } from "../../api/tipos";
-import { aSolicitud, useEdicionFragmentos } from "./useEdicionFragmentos";
+import { aSolicitud, crearFragmentoLocal, useEdicionFragmentos } from "./useEdicionFragmentos";
 
 vi.mock("../../api/analisis");
 
@@ -78,5 +78,34 @@ describe("useEdicionFragmentos", () => {
     expect(result.current.fragmentos).toHaveLength(3);
     expect(result.current.estadoGuardado).toBe("error");
     expect(result.current.error).not.toBe("");
+  });
+
+  it("acumula ediciones locales sin guardar y las persiste con calcularIndicadores", async () => {
+    vi.mocked(api.guardarFragmentos).mockClear();
+    vi.mocked(api.guardarFragmentos).mockImplementation(async (_id, lista) =>
+      lista.map((f, idx) => ({ ...fragmento(f.id ?? `srv-${idx}`), poligono: f.poligono })),
+    );
+    const { result } = renderHook(() => useEdicionFragmentos("x"));
+    await waitFor(() => expect(result.current.fragmentos).toHaveLength(3));
+
+    const nuevo = crearFragmentoLocal([
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 20 },
+    ]);
+    act(() => {
+      result.current.editarLocal([...result.current.fragmentos, nuevo]);
+    });
+    expect(api.guardarFragmentos).not.toHaveBeenCalled();
+    expect(result.current.cambiosPendientes).toBe(true);
+    expect(result.current.estadoGuardado).toBe("pendiente");
+    expect(aSolicitud(nuevo).id).toBeUndefined();
+
+    await act(async () => {
+      await result.current.calcularIndicadores();
+    });
+    expect(api.guardarFragmentos).toHaveBeenCalledTimes(1);
+    expect(result.current.cambiosPendientes).toBe(false);
+    expect(result.current.fragmentos).toHaveLength(4);
   });
 });

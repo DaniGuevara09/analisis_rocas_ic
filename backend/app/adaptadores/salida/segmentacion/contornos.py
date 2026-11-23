@@ -41,17 +41,25 @@ def simplificar(puntos: Sequence[Par], tolerancia_px: float) -> list[Par]:
 
 
 def simplificar_anillo(puntos: Sequence[Par], tolerancia_px: float) -> list[Par]:
-    """Douglas-Peucker sobre un contorno cerrado: lo parte en el punto más lejano al primero."""
+    """Douglas-Peucker sobre un contorno cerrado (usa cv2.approxPolyDP si está disponible)."""
     if len(puntos) < 4:
         return list(puntos)
-    origen = puntos[0]
-    corte = max(
-        range(len(puntos)),
-        key=lambda i: math.hypot(puntos[i][0] - origen[0], puntos[i][1] - origen[1]),
-    )
-    ida = simplificar(puntos[: corte + 1], tolerancia_px)
-    vuelta = simplificar([*puntos[corte:], origen], tolerancia_px)
-    return ida[:-1] + vuelta[:-1]
+    try:
+        import cv2  # type: ignore[import-not-found]
+        import numpy as np
+    except ImportError:
+        origen = puntos[0]
+        corte = max(
+            range(len(puntos)),
+            key=lambda i: math.hypot(puntos[i][0] - origen[0], puntos[i][1] - origen[1]),
+        )
+        ida = simplificar(puntos[: corte + 1], tolerancia_px)
+        vuelta = simplificar([*puntos[corte:], origen], tolerancia_px)
+        return ida[:-1] + vuelta[:-1]
+
+    arr = np.asarray(puntos, dtype=np.float32).reshape(-1, 1, 2)
+    approx = cv2.approxPolyDP(arr, float(tolerancia_px), True)
+    return [(float(p[0][0]), float(p[0][1])) for p in approx]
 
 
 def _recortar(contorno: Iterable[Sequence[float]], ancho_px: float, alto_px: float) -> list[Par]:

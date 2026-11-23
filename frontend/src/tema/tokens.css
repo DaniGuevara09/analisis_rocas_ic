@@ -43,8 +43,8 @@
   --vertice-radio: 6;
   --trazo-punteado: 8 6;
 
-  /* Fragmentos (editor y resultados) */
-  --color-fragmento: #FFD54F;
+  /* Fragmentos sin rango calculado (editor y resultados) */
+  --color-fragmento: #A855F7;
   --color-fragmento-seleccionado: #E8590C;
   --color-trazo-division: #E8590C;
   --color-trazo-dibujo: #00BFA5;

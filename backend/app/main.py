@@ -38,7 +38,11 @@ def crear_almacen(config: Configuracion) -> AlmacenImagenes:
             config.s3_secret_access_key,
             config.s3_region,
         )
-        return AlmacenImagenesS3(cliente, config.s3_bucket)
+        return AlmacenImagenesS3(
+            cliente,
+            config.s3_bucket,
+            carpeta_cache=str(Path(config.ruta_imagenes) / "_cache_s3"),
+        )
     return AlmacenArchivosLocal(config.ruta_imagenes)
 
 
@@ -59,6 +63,7 @@ def crear_segmentador(config: Configuracion) -> Segmentador:
             imgsz=config.segmentacion_imgsz,
             max_det=config.segmentacion_max_det,
             ruta_unet=config.ruta_modelo_unet,
+            refinar_con_unet=config.segmentacion_refinar_unet,
         )
     except Exception as error:  # noqa: BLE001 - la app debe arrancar aunque falle el modelo
         registro.exception("No se pudo cargar el modelo")
@@ -72,7 +77,10 @@ def crear_app() -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
-    motor = create_engine(configuracion.database_url, pool_pre_ping=True)
+    kw_motor: dict[str, object] = {"pool_pre_ping": True, "pool_recycle": 300}
+    if configuracion.database_url.startswith("postgresql"):
+        kw_motor["connect_args"] = {"connect_timeout": 10}
+    motor = create_engine(configuracion.database_url, **kw_motor)
     app.state.repositorio = RepositorioPostgreSQL(motor)
     app.state.repositorio_configuracion = RepositorioConfiguracionPostgreSQL(motor)
     app.state.almacen = crear_almacen(configuracion)

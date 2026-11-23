@@ -10,8 +10,9 @@ RUN apt-get update     && apt-get install -y --no-install-recommends libgl1 libg
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 COPY pyproject.toml ./
-COPY app ./app
 RUN pip install --no-cache-dir ".[yolo]"
+COPY app ./app
+RUN pip install --no-cache-dir --no-deps .
 
 COPY alembic.ini ./
 COPY alembic ./alembic

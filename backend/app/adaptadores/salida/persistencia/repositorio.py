@@ -49,13 +49,53 @@ class RepositorioPostgreSQL:
             fila = sesion.get(TablaAnalisis, id)
             return None if fila is None else self._reconstruir(sesion, fila)
 
-    def listar(self) -> list[Analisis]:
-        """Recupera todos los análisis, el más reciente primero."""
+    def obtener_meta_imagen(self, id: UUID) -> tuple[str, str] | None:
+        """Recupera solo `(imagen_ruta, imagen_formato)` sin cargar fragmentos."""
         with self._sesiones() as sesion:
-            filas = sesion.scalars(
-                select(TablaAnalisis).order_by(TablaAnalisis.fecha_creacion.desc())
-            ).all()
-            return [self._reconstruir(sesion, fila) for fila in filas]
+            fila = sesion.execute(
+                select(TablaAnalisis.imagen_ruta, TablaAnalisis.imagen_formato).where(
+                    TablaAnalisis.id == id
+                )
+            ).first()
+            return None if fila is None else (fila[0], fila[1])
+
+    def listar(self) -> list[Analisis]:
+        """Recupera todos los análisis en 4 consultas (sin N+1), el más reciente primero."""
+        with self._sesiones() as sesion:
+            filas = list(
+                sesion.scalars(
+                    select(TablaAnalisis).order_by(TablaAnalisis.fecha_creacion.desc())
+                ).all()
+            )
+            if not filas:
+                return []
+            ids = [f.id for f in filas]
+            calibraciones = {
+                c.analisis_id: c
+                for c in sesion.scalars(
+                    select(TablaCalibracion).where(TablaCalibracion.analisis_id.in_(ids))
+                ).all()
+            }
+            regiones = {
+                r.analisis_id: r
+                for r in sesion.scalars(
+                    select(TablaRegionExcluida).where(TablaRegionExcluida.analisis_id.in_(ids))
+                ).all()
+            }
+            fragmentos_por_id: dict[UUID, list[TablaFragmento]] = {i: [] for i in ids}
+            for frag in sesion.scalars(
+                select(TablaFragmento).where(TablaFragmento.analisis_id.in_(ids))
+            ).all():
+                fragmentos_por_id[frag.analisis_id].append(frag)
+            return [
+                analisis_desde_filas(
+                    fila,
+                    calibraciones.get(fila.id),
+                    regiones.get(fila.id),
+                    fragmentos_por_id[fila.id],
+                )
+                for fila in filas
+            ]
 
     def eliminar(self, id: UUID) -> None:
         """Elimina el análisis; las demás tablas caen en cascada."""

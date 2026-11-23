@@ -2,13 +2,14 @@ import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { crearAnalisis } from "../../api/analisis";
+import { crearAnalisis, urlImagen } from "../../api/analisis";
 import { mensajeDeError } from "../../api/errores";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
 import { Icono } from "../../componentes/Icono";
 import { IndicadorPasos } from "../../componentes/IndicadorPasos";
 import { MensajeError } from "../../componentes/MensajeError";
+import { precargarImagen } from "../../editor/useImagen";
 import { formatearTamano } from "../../utilidades/formato";
 import "./NuevoAnalisis.css";
 
@@ -108,6 +109,7 @@ export function NuevoAnalisis() {
     setEnviando(true);
     try {
       const creado = await crearAnalisis(nombre.trim(), archivo);
+      void precargarImagen(urlImagen(creado.id));
       navigate(`/analisis/${creado.id}/calibracion`);
     } catch (e) {
       const mensaje = mensajeDeError(e);

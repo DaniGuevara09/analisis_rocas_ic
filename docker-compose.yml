@@ -15,6 +15,10 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     # RNF-06: el .env es opcional. Sin él, todo funciona en modo local con los valores por defecto.
     env_file:
       - path: .env

@@ -105,7 +105,11 @@ def test_volver_a_segmentar_reemplaza_los_fragmentos(
     calibrado.agregar_fragmento(cuadrado(500, 500, 30))
     repositorio.guardar(calibrado)
     segmentador = SegmentadorFalso([cuadrado(0, 0, 10)])
-    SegmentarAnalisis(repositorio, almacen, segmentador).ejecutar(calibrado.id)
+    analisis_out, fragmentos = SegmentarAnalisis(
+        repositorio, almacen, segmentador
+    ).ejecutar_con_analisis(calibrado.id)
+    assert analisis_out.id == calibrado.id
+    assert len(fragmentos) == 1
     guardado = repositorio.obtener(calibrado.id)
     assert guardado is not None
     assert len(guardado.fragmentos) == 1

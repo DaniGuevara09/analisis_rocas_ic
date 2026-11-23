@@ -15,6 +15,13 @@ class ObtenerImagen:
 
     def ejecutar(self, id: UUID) -> tuple[bytes, str]:
         """Devuelve (contenido, formato "JPG"|"PNG")."""
+        obtener_meta = getattr(self._repositorio, "obtener_meta_imagen", None)
+        if callable(obtener_meta):
+            meta = obtener_meta(id)
+            if meta is None:
+                raise AnalisisNoEncontrado(str(id))
+            ruta, formato = meta
+            return self._almacen.leer(ruta), formato
         analisis = self._repositorio.obtener(id)
         if analisis is None:
             raise AnalisisNoEncontrado(str(id))

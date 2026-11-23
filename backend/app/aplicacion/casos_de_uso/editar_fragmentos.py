@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.aplicacion.puertos import RepositorioAnalisis
 from app.dominio.errores import AnalisisNoEncontrado
-from app.dominio.modelo import Fragmento, OrigenFragmento, Poligono, Punto
+from app.dominio.modelo import Analisis, Fragmento, OrigenFragmento, Poligono, Punto
 
 
 @dataclass(frozen=True)
@@ -26,13 +26,20 @@ class EditarFragmentos:
 
     def ejecutar(self, id: UUID, editados: Sequence[FragmentoEditado]) -> list[Fragmento]:
         """Valida en el dominio, guarda y devuelve los fragmentos vigentes."""
+        _, fragmentos = self.ejecutar_con_analisis(id, editados)
+        return fragmentos
+
+    def ejecutar_con_analisis(
+        self, id: UUID, editados: Sequence[FragmentoEditado]
+    ) -> tuple[Analisis, list[Fragmento]]:
+        """Como `ejecutar`, devolviendo el agregado para ahorrar una segunda consulta a BD."""
         analisis = self._repositorio.obtener(id)
         if analisis is None:
             raise AnalisisNoEncontrado(str(id))
         fragmentos = [self._a_fragmento(e) for e in editados]
         analisis.reemplazar_fragmentos(fragmentos)
         self._repositorio.guardar(analisis)
-        return list(analisis.fragmentos)
+        return analisis, list(analisis.fragmentos)
 
     @staticmethod
     def _a_fragmento(editado: FragmentoEditado) -> Fragmento:

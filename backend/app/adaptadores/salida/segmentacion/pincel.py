@@ -118,19 +118,26 @@ def mascaras_a_poligonos_limpios(
     caja: tuple[int, int, int, int],
     ancho_img: int,
     alto_img: int,
+    tam_inferencia: tuple[int, int] | None = None,
 ) -> list[Poligono]:
-    """Convierte máscaras binarias a polígonos simples usando el contorno exterior mayor."""
+    """Convierte máscaras binarias a polígonos simples sin reescalar matrices gigantes."""
     import cv2  # type: ignore[import-not-found]
     import numpy as np
 
     x0, y0, x1, y1 = caja
     w_rec, h_rec = x1 - x0, y1 - y0
+    w_ref, h_ref = tam_inferencia if tam_inferencia is not None else (w_rec, h_rec)
+    escala_x = w_rec / max(1, w_ref)
+    escala_y = h_rec / max(1, h_ref)
     contornos: list[list[tuple[float, float]]] = []
 
     for m in mascaras_tensor:
         arr = m.astype(np.uint8)
-        if arr.shape != (h_rec, w_rec):
-            arr = cv2.resize(arr, (w_rec, h_rec), interpolation=cv2.INTER_NEAREST)
+        if arr.shape != (h_ref, w_ref):
+            arr = (
+                cv2.resize(m.astype(np.float32), (w_ref, h_ref), interpolation=cv2.INTER_CUBIC)
+                > 0.5
+            ).astype(np.uint8)
         binaria = (arr > 0).astype(np.uint8)
         c_cv, _ = cv2.findContours(binaria, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not c_cv:
@@ -138,7 +145,9 @@ def mascaras_a_poligonos_limpios(
         mayor = max(c_cv, key=cv2.contourArea)
         if len(mayor) < 3:
             continue
-        contornos.append([(float(pt[0][0]) + x0, float(pt[0][1]) + y0) for pt in mayor])
+        contornos.append(
+            [(float(pt[0][0]) * escala_x + x0, float(pt[0][1]) * escala_y + y0) for pt in mayor]
+        )
 
     return poligonos_desde_contornos(contornos, ancho_img, alto_img)
 

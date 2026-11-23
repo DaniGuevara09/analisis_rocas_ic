@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { obtenerSalud, segmentarConPincel, urlImagen } from "../../api/analisis";
-import type { Fragmento, FragmentoSolicitud, Punto } from "../../api/tipos";
+import type { Fragmento, Punto } from "../../api/tipos";
 import { Boton } from "../../componentes/Boton";
 import { Encabezado } from "../../componentes/Encabezado";
 import { Icono, type NombreIcono } from "../../componentes/Icono";
@@ -11,6 +11,7 @@ import { colorPorFragmento, LeyendaRangos } from "../../componentes/LeyendaRango
 import { MensajeError } from "../../componentes/MensajeError";
 import { ModalConfirmacion } from "../../componentes/ModalConfirmacion";
 import { type Herramienta, LienzoFragmentos } from "../../editor/LienzoFragmentos";
+import { precargarImagen } from "../../editor/useImagen";
 import {
   AREA_MINIMA_FRAGMENTO_PX2,
   cercaDe,
@@ -25,12 +26,12 @@ import {
   unirPoligonos,
 } from "../../editor/operacionesPoligonos";
 import { formatearMm, formatearNumero } from "../../utilidades/formato";
-import { aSolicitud, useEdicionFragmentos } from "./useEdicionFragmentos";
+import { crearFragmentoLocal, useEdicionFragmentos } from "./useEdicionFragmentos";
 import "./EditorFragmentos.css";
 
 const AYUDAS: Record<Herramienta, string> = {
   seleccionar:
-    "Arrastre un punto para moverlo, tóquelo para eliminarlo o haga clic en el borde para agregar un punto. Pulse Guardar (Ctrl + S) al finalizar.",
+    "Arrastre un punto para moverlo, tóquelo para eliminarlo o haga clic en el borde para agregar un punto.",
   pincel:
     "Pincel mágico: dé un solo toque en una roca o pinte su zona para que la IA la detecte; o pinte atravesando dos o más rocas para unirlas.",
   dibujar:
@@ -62,8 +63,16 @@ export function EditorFragmentos() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const edicion = useEdicionFragmentos(id);
-  const { detalle, fragmentos, resultados, aplicar, editarLocal, guardarPendientes, cambiosPendientes, setError } =
-    edicion;
+  const {
+    detalle,
+    fragmentos,
+    resultados,
+    editarLocal,
+    guardarPendientes,
+    calcularIndicadores,
+    cambiosPendientes,
+    setError,
+  } = edicion;
 
   const [herramienta, setHerramienta] = useState<Herramienta>("seleccionar");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
@@ -84,6 +93,11 @@ export function EditorFragmentos() {
   // null = aún no se sabe; el editor avisa si no hay modelo instalado en backend/modelos.
   const [modeloDisponible, setModeloDisponible] = useState<boolean | null>(null);
   useEffect(() => {
+    if (id) {
+      void precargarImagen(urlImagen(id));
+    }
+  }, [id]);
+  useEffect(() => {
     obtenerSalud()
       .then((salud) => setModeloDisponible(salud.modelo_disponible))
       .catch(() => setModeloDisponible(null));
@@ -99,9 +113,6 @@ export function EditorFragmentos() {
   );
 
   const elegirHerramienta = (nueva: Herramienta) => {
-    if (cambiosPendientes) {
-      void guardarPendientes();
-    }
     setHerramienta(nueva);
     limpiarTrazo();
     if (nueva !== "seleccionar") {
@@ -113,9 +124,9 @@ export function EditorFragmentos() {
     if (seleccionados.size === 0 || ocupado) {
       return;
     }
-    void aplicar(fragmentos.filter((f) => !seleccionados.has(f.id)).map(aSolicitud));
+    editarLocal(fragmentos.filter((f) => !seleccionados.has(f.id)));
     setSeleccionados(new Set());
-  }, [aplicar, fragmentos, ocupado, seleccionados]);
+  }, [editarLocal, fragmentos, ocupado, seleccionados]);
 
   const unirSeleccion = useCallback(() => {
     if (seleccionados.size < 2 || ocupado) {
@@ -127,10 +138,10 @@ export function EditorFragmentos() {
       setError("Solo se pueden unir fragmentos que se tocan o se solapan.");
       return;
     }
-    const resto = fragmentos.filter((f) => !seleccionados.has(f.id)).map(aSolicitud);
-    void aplicar([...resto, { poligono: union, origen: "MANUAL" }]);
+    const resto = fragmentos.filter((f) => !seleccionados.has(f.id));
+    editarLocal([...resto, crearFragmentoLocal(union, "MANUAL")]);
     setSeleccionados(new Set());
-  }, [aplicar, fragmentos, ocupado, seleccionados, setError]);
+  }, [editarLocal, fragmentos, ocupado, seleccionados, setError]);
 
   const dividir = useCallback(
     (corte: Punto[]) => {
@@ -153,11 +164,11 @@ export function EditorFragmentos() {
         setError("El corte debe atravesar un fragmento de un borde a otro.");
         return;
       }
-      const resto = fragmentos.filter((f) => f.id !== objetivo.id).map(aSolicitud);
-      const nuevos = piezas.map((poligono): FragmentoSolicitud => ({ poligono, origen: "MANUAL" }));
-      void aplicar([...resto, ...nuevos]);
+      const resto = fragmentos.filter((f) => f.id !== objetivo.id);
+      const nuevos = piezas.map((poligono) => crearFragmentoLocal(poligono, "MANUAL"));
+      editarLocal([...resto, ...nuevos]);
     },
-    [aplicar, fragmentos, limpiarTrazo, setError],
+    [editarLocal, fragmentos, limpiarTrazo, setError],
   );
 
   const cerrarDibujo = useCallback(() => {
@@ -178,10 +189,9 @@ export function EditorFragmentos() {
       );
       return;
     }
-    const nuevo: FragmentoSolicitud = { poligono: puntos, origen: "MANUAL" };
-    void aplicar([...fragmentos.map(aSolicitud), nuevo]);
+    editarLocal([...fragmentos, crearFragmentoLocal(puntos, "MANUAL")]);
     limpiarTrazo();
-  }, [aplicar, dividir, fragmentos, herramienta, limpiarTrazo, ocupado, trazo, setError]);
+  }, [dividir, editarLocal, fragmentos, herramienta, limpiarTrazo, ocupado, trazo, setError]);
 
   /** Quita el último punto marcado (clic equivocado al trazar) y lo guarda para poder rehacerlo con Ctrl + Y. */
   const quitarUltimoPunto = useCallback(() => {
@@ -213,7 +223,7 @@ export function EditorFragmentos() {
     if (ocupado) {
       return;
     }
-    void aplicar(fragmentos.filter((f) => !esDiminuto(f.poligono)).map(aSolicitud));
+    editarLocal(fragmentos.filter((f) => !esDiminuto(f.poligono)));
   };
 
   const alClicImagen = (punto: Punto) => {
@@ -335,7 +345,7 @@ export function EditorFragmentos() {
           union,
           noTocados.map((f) => f.poligono),
         ) ?? union;
-        await aplicar([...noTocados.map(aSolicitud), { poligono: recortada, origen: "MANUAL" }]);
+        editarLocal([...noTocados, crearFragmentoLocal(recortada, "MANUAL")]);
         return;
       }
 
@@ -363,7 +373,10 @@ export function EditorFragmentos() {
             expandido,
             otros.map((f) => f.poligono),
           ) ?? expandido;
-          await aplicar([...otros.map(aSolicitud), { id: unico.id, poligono: limpio, origen: "MANUAL" }]);
+          editarLocal([
+            ...otros,
+            { ...unico, poligono: limpio, origen: "MANUAL", diametro_equivalente_mm: null },
+          ]);
           return;
         }
 
@@ -376,12 +389,12 @@ export function EditorFragmentos() {
         if (esDiminuto(final)) {
           return;
         }
-        await aplicar([...fragmentos.map(aSolicitud), { poligono: final, origen: "MODELO" }]);
+        editarLocal([...fragmentos, crearFragmentoLocal(final, "MODELO")]);
       } finally {
         setUsandoPincel(false);
       }
     },
-    [aplicar, fragmentos, id, ocupado, setError],
+    [editarLocal, fragmentos, id, ocupado, setError],
   );
 
   // Atajos de teclado (ignorados mientras se escribe en un campo de texto).
@@ -420,17 +433,10 @@ export function EditorFragmentos() {
       } else if (tecla === "delete" || tecla === "backspace") {
         borrarSeleccion();
       } else if (tecla === "escape") {
-        if (cambiosPendientes) {
-          void guardarPendientes();
-        }
         limpiarTrazo();
         setSeleccionados(new Set());
       } else if (tecla === "enter") {
-        if (herramienta === "seleccionar" && cambiosPendientes) {
-          void guardarPendientes();
-        } else {
-          cerrarDibujo();
-        }
+        cerrarDibujo();
       } else if (sinModificadores && tecla === "u") {
         unirSeleccion();
       } else if (sinModificadores && tecla === "v") {
@@ -760,6 +766,15 @@ export function EditorFragmentos() {
                   <dd className="cifra">{resultados ? formatearNumero(resultados.indice_n, 2) : "—"}</dd>
                 </div>
               </dl>
+              <div className="editor__fila">
+                <Boton
+                  variante={cambiosPendientes ? "primario" : "secundario"}
+                  onClick={() => void calcularIndicadores()}
+                  disabled={ocupado || fragmentos.length < 3 || diminutos.length > 0}
+                >
+                  {guardando ? "Calculando..." : "Calcular indicadores"}
+                </Boton>
+              </div>
               {resultados ? (
                 <LeyendaRangos rangos={resultados.rangos} fragmentos={resultados.fragmentos} />
               ) : (
@@ -770,13 +785,7 @@ export function EditorFragmentos() {
             <div className="editor__fila">
               <Boton
                 variante="secundario"
-                onClick={() => {
-                  void guardarPendientes().then((ok) => {
-                    if (ok) {
-                      navigate(`/analisis/${id}/calibracion`);
-                    }
-                  });
-                }}
+                onClick={() => navigate(`/analisis/${id}/calibracion`)}
               >
                 <Icono nombre="anterior" />
                 Recalibrar
@@ -790,7 +799,7 @@ export function EditorFragmentos() {
                     }
                   });
                 }}
-                disabled={!resultados || ocupado}
+                disabled={fragmentos.length < 3 || diminutos.length > 0 || ocupado}
               >
                 Ver resultados
                 <Icono nombre="siguiente" />
