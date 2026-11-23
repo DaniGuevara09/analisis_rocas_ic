@@ -13,8 +13,8 @@ _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
-def _construir_arquitectura():
-    """Construye UNetDualHead con los mismos nombres de capa que `unet_best.pth`."""
+def _construir_arquitectura(usar_resnet34: bool = False):
+    """Construye UNetDualHead (clásica o con backbone ResNet-34) según el checkpoint."""
     import torch  # type: ignore[import-not-found]
     import torch.nn as nn  # type: ignore[import-not-found]
     import torch.nn.functional as F  # type: ignore[import-not-found]
@@ -61,6 +61,42 @@ def _construir_arquitectura():
                 x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=True)
             return self.conv(torch.cat([skip, x], dim=1))
 
+    if usar_resnet34:
+        from torchvision.models import resnet34  # type: ignore[import-not-found]
+
+        class UNetDualHeadResNet34(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                backbone = resnet34(weights=None)
+                self.input_conv = DoubleConv(3, 32, residual=True)
+                self.enc0 = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)
+                self.enc1 = nn.Sequential(backbone.maxpool, backbone.layer1)
+                self.enc2 = backbone.layer2
+                self.enc3 = backbone.layer3
+                self.bottleneck = backbone.layer4
+                self.dec3 = Up(512 + 256, 256)
+                self.dec2 = Up(256 + 128, 128)
+                self.dec1 = Up(128 + 64, 64)
+                self.dec0 = Up(64 + 64, 64)
+                self.dec_full = Up(64 + 32, 32)
+                self.head_fg = nn.Conv2d(32, 1, 1)
+                self.head_bd = nn.Conv2d(32, 1, 1)
+
+            def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                s_in = self.input_conv(x)
+                s0 = self.enc0(x)
+                s1 = self.enc1(s0)
+                s2 = self.enc2(s1)
+                s3 = self.enc3(s2)
+                d = self.dec3(self.bottleneck(s3), s3)
+                d = self.dec2(d, s2)
+                d = self.dec1(d, s1)
+                d = self.dec0(d, s0)
+                d = self.dec_full(d, s_in)
+                return self.head_fg(d), self.head_bd(d)
+
+        return UNetDualHeadResNet34()
+
     class UNetDualHead(nn.Module):
         def __init__(
             self, in_channels: int = 3, features: tuple[int, ...] = (64, 128, 256, 512)
@@ -100,14 +136,17 @@ class RefinadorUNet:
         import torch  # type: ignore[import-not-found]
 
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._sz = img_size
-        self._model = _construir_arquitectura().to(self._device).eval()
         checkpoint = torch.load(ruta_pesos, map_location=self._device, weights_only=False)
+        self._sz = (
+            int(checkpoint.get("img_size", img_size)) if isinstance(checkpoint, dict) else img_size
+        )
         estado = (
             checkpoint.get("model_state_dict", checkpoint)
             if isinstance(checkpoint, dict)
             else checkpoint
         )
+        usar_resnet34 = isinstance(estado, dict) and "input_conv.conv.0.weight" in estado
+        self._model = _construir_arquitectura(usar_resnet34=usar_resnet34).to(self._device).eval()
         self._model.load_state_dict(estado)
 
     def mapas_probabilidad_nativas(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

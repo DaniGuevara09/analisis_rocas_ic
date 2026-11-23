@@ -507,9 +507,15 @@ class SegmentadorYOLO:
         self._max_det = max_det
         self._unet: Any = None
         if ruta_unet and Path(ruta_unet).is_file():
-            from app.adaptadores.salida.segmentacion.unet_bordes import RefinadorUNet
+            try:
+                from app.adaptadores.salida.segmentacion.unet_bordes import RefinadorUNet
 
-            self._unet = RefinadorUNet(ruta_unet)
+                self._unet = RefinadorUNet(ruta_unet)
+            except Exception:  # noqa: BLE001 - U-Net es opcional; YOLO debe seguir operativo
+                _LOG.exception(
+                    "No se pudo cargar U-Net en %s; se continúa solo con YOLO",
+                    ruta_unet,
+                )
         self._refinar_con_unet = bool(refinar_con_unet and self._unet is not None)
         _LOG.info(
             "SegmentadorYOLO listo (unet_pincel=%s, unet_auto=%s)",
