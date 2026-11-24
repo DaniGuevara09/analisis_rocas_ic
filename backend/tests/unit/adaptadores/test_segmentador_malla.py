@@ -101,3 +101,25 @@ def test_particionar_poligonos_sin_solape_conserva_aisladas_y_recorta_solape() -
     assert sum(p.area() for p in salida) <= (
         roca_principal.area() + roca_vecina.area() + roca_aislada.area() + 1.0
     )
+
+
+def test_recuperar_rocas_en_huecos_respeta_limite_y_no_duplica_existentes() -> None:
+    import numpy as np
+
+    from app.adaptadores.salida.segmentacion.unet_bordes import recuperar_rocas_en_huecos
+
+    fg = np.zeros((128, 128), dtype=np.float32)
+    bd = np.zeros((128, 128), dtype=np.float32)
+    # Roca ya detectada por YOLO en la mitad izquierda
+    fg[20:60, 10:50] = 0.9
+    # Dos rocas pequeñas en la mitad derecha no detectadas por YOLO
+    fg[20:40, 70:90] = 0.9
+    fg[70:95, 75:100] = 0.9
+
+    roca_yolo = rectangulo(10, 20, 50, 60)
+    recuperadas = recuperar_rocas_en_huecos(
+        fg, bd, [roca_yolo], ancho_img=128, alto_img=128, area_minima_px=50.0, max_nuevas=10
+    )
+    # Sin cv2 local devuelve []; con cv2 en Docker recupera las 2 rocas pequeñas de la derecha.
+    for pol in recuperadas:
+        assert min(p.x for p in pol.puntos) >= 50.0

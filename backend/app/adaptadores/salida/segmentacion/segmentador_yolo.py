@@ -25,13 +25,15 @@ IOU_NMS = 0.45
 CONFIANZA_PINCEL = 0.05
 LADO_MAX_PINCEL_YOLO = 640
 MAX_DET_PINCEL = 60
-UMBRAL_DENSIDAD_MALLA = 220
+UMBRAL_DENSIDAD_MALLA = 80
 LADO_MAX_UNICO_YOLO = 1024
-LADO_MAX_MALLA_YOLO = 640
-MAX_DET_MALLA = 400
+LADO_MAX_MALLA_YOLO = 1024
+MAX_DET_MALLA = 500
 SOLAPE_MALLA = 0.22
 IOU_CAJA_RESPALDO_CUBIERTO = 0.70
 AREA_MINIMA_DETECCION_PX2 = 180.0
+AREA_MINIMA_HUECOS_PX2 = 75.0
+MAX_TOTAL_FRAGMENTOS = 700
 SOLIDEZ_MINIMA_ROCA = 0.50
 ASPECTO_MAXIMO_ROCA = 6.5
 UMBRAL_CONF_CONFIABLE_YOLO = 0.25
@@ -64,7 +66,7 @@ def generar_cuadricula(
     ancho: int, alto: int, n_detecciones: int, solape: float = SOLAPE_MALLA
 ) -> list[tuple[int, int, int, int]]:
     """Genera mosaicos solapados (2x2 o 3x2/2x3) según la densidad detectada."""
-    if n_detecciones <= 220:
+    if n_detecciones <= 300:
         cols, filas = 2, 2
     elif ancho >= alto:
         cols, filas = 3, 2
@@ -771,16 +773,45 @@ class SegmentadorYOLO:
             gc.collect()
             t_resp = time.perf_counter() - t_resp_ini
 
-        del fg_unet, bd_unet
         t_fus_ini = time.perf_counter()
         dedup = _fusionar_detecciones_con_confianza(primarias, respaldo)
         salida = particionar_poligonos_sin_solape(
             dedup, w, h, area_minima_px=_area_minima_segmentacion(w, h)
         )
         t_fus = time.perf_counter() - t_fus_ini
+
+        # Relleno estilo WipFrag: recupera rocas pequeñas en huecos no cubiertos por YOLO
+        # reutilizando la misma pasada única de U-Net (sin inferencia adicional).
+        t_huecos_ini = time.perf_counter()
+        n_huecos = 0
+        if fg_unet is not None and bd_unet is not None:
+            max_extra = max(0, MAX_TOTAL_FRAGMENTOS - len(salida))
+            if max_extra > 0:
+                from app.adaptadores.salida.segmentacion.unet_bordes import (
+                    recuperar_rocas_en_huecos,
+                )
+
+                area_min_huecos = max(
+                    AREA_MINIMA_FRAGMENTO_PX2,
+                    min(AREA_MINIMA_HUECOS_PX2, float(w * h) * 0.00012),
+                )
+                extra = recuperar_rocas_en_huecos(
+                    fg_unet,
+                    bd_unet,
+                    salida,
+                    w,
+                    h,
+                    area_minima_px=area_min_huecos,
+                    max_nuevas=max_extra,
+                )
+                n_huecos = len(extra)
+                salida.extend(extra)
+        del fg_unet, bd_unet
+        t_huecos = time.perf_counter() - t_huecos_ini
+
         _LOG.info(
             "Segmentación %dx%d [%s, unet=%s (%.2fs)]: global=%d (%.2fs), malla=%d (%.2fs), "
-            "respaldo=%d (%.2fs), fusion=%d->%d (%.2fs), total=%.2fs",
+            "respaldo=%d (%.2fs), fusion=%d->%d (%.2fs), huecos=+%d (%.2fs), total=%.2fs",
             w,
             h,
             modo,
@@ -793,8 +824,10 @@ class SegmentadorYOLO:
             len(respaldo),
             t_resp,
             len(dedup),
-            len(salida),
+            len(salida) - n_huecos,
             t_fus,
+            n_huecos,
+            t_huecos,
             time.perf_counter() - t0,
         )
         return salida

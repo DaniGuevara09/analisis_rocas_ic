@@ -311,3 +311,189 @@ class RefinadorUNet:
             return mascaras
         fg_prob, bd_prob = self.mapas_probabilidad(img_rgb)
         return [self.refinar_mascara_recorte(m, fg_prob, bd_prob) for m in mascaras]
+
+
+def recuperar_rocas_en_huecos(
+    fg_prob: np.ndarray,
+    bd_prob: np.ndarray,
+    poligonos_existentes: Sequence[Poligono],
+    ancho_img: int,
+    alto_img: int,
+    area_minima_px: float = 75.0,
+    max_nuevas: int = 350,
+    fg_semilla_umbral: float = 0.56,
+    fg_crecimiento_umbral: float = 0.38,
+    bd_umbral: float = 0.38,
+    fg_medio_min: float = 0.60,
+) -> list[Poligono]:
+    """Recupera rocas en huecos no cubiertos por YOLO usando Watershed con histéresis."""
+    if max_nuevas <= 0 or fg_prob.size == 0:
+        return []
+    try:
+        import cv2  # type: ignore[import-not-found]
+    except ImportError:
+        return []
+
+    uh, uw = fg_prob.shape[:2]
+    cubierto = np.zeros((uh, uw), dtype=np.uint8)
+    for pol in poligonos_existentes:
+        pts = np.array(
+            [
+                [
+                    min(uw - 1, max(0, int(round(p.x * uw / ancho_img)))),
+                    min(uh - 1, max(0, int(round(p.y * uh / alto_img)))),
+                ]
+                for p in pol.puntos
+            ],
+            dtype=np.int32,
+        )
+        if len(pts) >= 3:
+            cv2.fillPoly(cubierto, [pts], (1,))
+
+    # Zona de crecimiento hasta el borde real de la roca (evita polígonos encogidos).
+    fg_crecimiento = ((fg_prob > fg_crecimiento_umbral) & (cubierto == 0)).astype(np.uint8)
+    if int(np.count_nonzero(fg_crecimiento)) < 16:
+        return []
+
+    k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    # Dilatar 1 px la zona cubierta solo para semillas evita halos finos pegados a rocas YOLO.
+    cubierto_semilla = cv2.dilate(cubierto, k3, iterations=1) if np.any(cubierto) else cubierto
+    bd_bin = (bd_prob > bd_umbral).astype(np.uint8)
+    semillas = (
+        (fg_prob > fg_semilla_umbral) & (bd_bin == 0) & (cubierto_semilla == 0)
+    ).astype(np.uint8)
+    semillas = cv2.morphologyEx(semillas, cv2.MORPH_OPEN, k3)
+    if not np.any(semillas):
+        return []
+
+    dist = cv2.distanceTransform(semillas, cv2.DIST_L2, 5)
+    dist_suave = cv2.GaussianBlur(dist, (3, 3), 0.9)
+
+    # 1. Semillas en picos locales de distancia (evita partir una misma roca pequeña en dos).
+    k_pico = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    es_pico = (
+        (semillas > 0)
+        & (dist_suave >= 1.8)
+        & (dist_suave == cv2.dilate(dist_suave, k_pico))
+    )
+    n_picos, mapa_picos = cv2.connectedComponents(es_pico.astype(np.uint8))
+
+    marcadores = np.zeros((uh, uw), dtype=np.int32)
+    marcadores[fg_crecimiento == 0] = 1  # fondo definitivo + rocas ya cubiertas por YOLO
+    next_id = 2
+    if n_picos > 1:
+        mascara_p = mapa_picos > 0
+        marcadores[mascara_p] = mapa_picos[mascara_p] + 1
+        next_id = n_picos + 1
+
+    # 2. Garantizar semilla a núcleos pequeños válidos sin pico local >= 1.8 px.
+    escala_area_grid = (uw * uh) / max(1.0, float(ancho_img * alto_img))
+    min_area_grid = max(12, int(round(area_minima_px * escala_area_grid)))
+    min_semilla_grid = max(6, min_area_grid // 2)
+
+    n_cc, cc_map, cc_stats, _ = cv2.connectedComponentsWithStats(semillas)
+    if n_cc > 1:
+        cubiertos_cc = set(np.unique(cc_map[marcadores >= 2]).tolist())
+        for cc_id in range(1, n_cc):
+            if cc_id in cubiertos_cc:
+                continue
+            if int(cc_stats[cc_id, cv2.CC_STAT_AREA]) < min_semilla_grid:
+                continue
+            x0 = int(cc_stats[cc_id, cv2.CC_STAT_LEFT])
+            y0 = int(cc_stats[cc_id, cv2.CC_STAT_TOP])
+            cw = int(cc_stats[cc_id, cv2.CC_STAT_WIDTH])
+            ch = int(cc_stats[cc_id, cv2.CC_STAT_HEIGHT])
+            sub_cc = cc_map[y0 : y0 + ch, x0 : x0 + cw] == cc_id
+            sub_dist = dist[y0 : y0 + ch, x0 : x0 + cw]
+            ys_l, xs_l = np.nonzero(sub_cc)
+            if len(ys_l) == 0:
+                continue
+            mejor = int(np.argmax(sub_dist[ys_l, xs_l]))
+            marcadores[y0 + int(ys_l[mejor]), x0 + int(xs_l[mejor])] = next_id
+            next_id += 1
+
+    if next_id <= 2:
+        return []
+
+    elevacion_f = np.clip(bd_prob * 0.65 + (1.0 - fg_prob) * 0.35, 0.0, 1.0)
+    elevacion_u8 = cv2.GaussianBlur((elevacion_f * 255.0).astype(np.uint8), (3, 3), 0.7)
+    elevacion_3c = cv2.cvtColor(elevacion_u8, cv2.COLOR_GRAY2BGR)
+    try:
+        cv2.watershed(elevacion_3c, marcadores)
+    except Exception:  # noqa: BLE001
+        return []
+
+    ys, xs = np.nonzero(marcadores >= 2)
+    if len(ys) == 0:
+        return []
+    lbls = marcadores[ys, xs]
+    orden = np.argsort(lbls, kind="mergesort")
+    ys, xs, lbls = ys[orden], xs[orden], lbls[orden]
+    _unicos, inicios, cuentas = np.unique(lbls, return_index=True, return_counts=True)
+
+    sx_inv = ancho_img / float(uw)
+    sy_inv = alto_img / float(uh)
+    candidatos: list[tuple[float, Poligono]] = []
+
+    for ini, cnt in zip(inicios.tolist(), cuentas.tolist(), strict=True):
+        if cnt < min_area_grid:
+            continue
+        ys_r = ys[ini : ini + cnt]
+        xs_r = xs[ini : ini + cnt]
+        media_fg = float(fg_prob[ys_r, xs_r].mean())
+        if media_fg < fg_medio_min:
+            continue
+
+        x0 = max(0, int(xs_r.min()) - 1)
+        y0 = max(0, int(ys_r.min()) - 1)
+        x1 = min(uw, int(xs_r.max()) + 2)
+        y1 = min(uh, int(ys_r.max()) + 2)
+        parche = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+        parche[ys_r - y0, xs_r - x0] = 1
+
+        # Suavizado 2× en parches pequeños para eliminar escalones de la rejilla 640×640.
+        ph, pw = parche.shape[:2]
+        factor = 2 if max(ph, pw) < 40 else 1
+        if factor > 1:
+            suave = cv2.resize(
+                parche.astype(np.float32),
+                (pw * factor, ph * factor),
+                interpolation=cv2.INTER_LINEAR,
+            )
+            parche_bin = (suave > 0.5).astype(np.uint8)
+        else:
+            parche_bin = parche
+
+        c_cv, _ = cv2.findContours(parche_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not c_cv:
+            continue
+        mayor = max(c_cv, key=cv2.contourArea)
+        if len(mayor) < 3:
+            continue
+        area_c = float(cv2.contourArea(mayor))
+        if area_c <= 0.0:
+            continue
+        casco = cv2.convexHull(mayor)
+        area_casco = float(cv2.contourArea(casco))
+        if area_casco > 0.0 and (area_c / area_casco) < 0.62:
+            continue
+        _centro, (rw, rh), _ang = cv2.minAreaRect(mayor)
+        if min(rw, rh) > 0.0 and (max(rw, rh) / min(rw, rh)) > 3.8:
+            continue
+
+        offset = 0.5 / factor
+        globales = [
+            (
+                (x0 + float(pt[0][0]) / factor + offset) * sx_inv,
+                (y0 + float(pt[0][1]) / factor + offset) * sy_inv,
+            )
+            for pt in mayor
+        ]
+        poligonos = poligonos_desde_contornos(
+            [globales], ancho_img, alto_img, area_minima_px=area_minima_px
+        )
+        if poligonos:
+            candidatos.append((media_fg * float(cnt), poligonos[0]))
+
+    candidatos.sort(key=lambda item: item[0], reverse=True)
+    return [pol for _score, pol in candidatos[:max_nuevas]]
