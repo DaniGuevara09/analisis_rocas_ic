@@ -25,13 +25,18 @@ IOU_NMS = 0.45
 CONFIANZA_PINCEL = 0.05
 LADO_MAX_PINCEL_YOLO = 640
 MAX_DET_PINCEL = 60
-UMBRAL_DENSIDAD_MALLA = 80
-LADO_MAX_UNICO_YOLO = 1280
+UMBRAL_DENSIDAD_MALLA = 220
+LADO_MAX_UNICO_YOLO = 1024
 LADO_MAX_MALLA_YOLO = 640
 MAX_DET_MALLA = 400
 SOLAPE_MALLA = 0.22
 IOU_CAJA_RESPALDO_CUBIERTO = 0.70
 AREA_MINIMA_DETECCION_PX2 = 180.0
+SOLIDEZ_MINIMA_ROCA = 0.50
+ASPECTO_MAXIMO_ROCA = 6.5
+UMBRAL_CONF_CONFIABLE_YOLO = 0.25
+UMBRAL_FG_UNET_MIN = 0.35
+FRACCION_MINIMA_TRAS_PARTICION = 0.40
 
 _LOG = logging.getLogger(__name__)
 Caja = tuple[float, float, float, float]
@@ -236,10 +241,10 @@ def _se_superponen_mucho(
     return (inter / union) >= 0.35 or (inter / min(ca, cb)) >= 0.55
 
 
-def fusionar_detecciones(
+def _fusionar_detecciones_con_confianza(
     primarias: Sequence[tuple[Poligono, float]],
     respaldo: Sequence[tuple[Poligono, float]],
-) -> list[Poligono]:
+) -> list[tuple[Poligono, float]]:
     """Deduplica detecciones entre mosaicos usando rejilla espacial O(N)."""
     ordenadas = [
         *(sorted(primarias, key=lambda item: item[1], reverse=True)),
@@ -247,13 +252,13 @@ def fusionar_detecciones(
     ]
     if not ordenadas:
         return []
-    con_cajas = [(pol, _bbox_poligono(pol)) for pol, _conf in ordenadas]
-    indice = _IndiceEspacial(_tamano_celda_para_cajas([box for _, box in con_cajas]))
-    aceptados: list[tuple[Poligono, Caja]] = []
-    for pol, box in con_cajas:
+    con_cajas = [(pol, conf, _bbox_poligono(pol)) for pol, conf in ordenadas]
+    indice = _IndiceEspacial(_tamano_celda_para_cajas([box for _, _, box in con_cajas]))
+    aceptados: list[tuple[Poligono, float, Caja]] = []
+    for pol, conf, box in con_cajas:
         duplicado = False
         for idx_ok in indice.candidatos(box):
-            pol_ok, box_ok = aceptados[idx_ok]
+            pol_ok, _conf_ok, box_ok = aceptados[idx_ok]
             if box[2] <= box_ok[0] or box_ok[2] <= box[0]:
                 continue
             if box[3] <= box_ok[1] or box_ok[3] <= box[1]:
@@ -263,8 +268,118 @@ def fusionar_detecciones(
                 break
         if not duplicado:
             indice.agregar(len(aceptados), box)
-            aceptados.append((pol, box))
-    return [pol for pol, _box in aceptados]
+            aceptados.append((pol, conf, box))
+    return [(pol, conf) for pol, conf, _box in aceptados]
+
+
+def fusionar_detecciones(
+    primarias: Sequence[tuple[Poligono, float]],
+    respaldo: Sequence[tuple[Poligono, float]],
+) -> list[Poligono]:
+    """Deduplica detecciones entre mosaicos y devuelve solo los polígonos."""
+    return [pol for pol, _conf in _fusionar_detecciones_con_confianza(primarias, respaldo)]
+
+
+def _es_geometria_roca_valida(contorno_cv: np.ndarray) -> bool:
+    """Descarta artefactos imposibles (tiras muy delgadas o anillos de sombra huecos)."""
+    import cv2  # type: ignore[import-not-found]
+
+    area = float(cv2.contourArea(contorno_cv))
+    if area <= 0.0:
+        return False
+    casco = cv2.convexHull(contorno_cv)
+    area_casco = float(cv2.contourArea(casco))
+    if area_casco > 0.0 and (area / area_casco) < SOLIDEZ_MINIMA_ROCA:
+        return False
+    _centro, (rw, rh), _ang = cv2.minAreaRect(contorno_cv)
+    menor = min(rw, rh)
+    mayor = max(rw, rh)
+    if menor > 0.0 and (mayor / menor) > ASPECTO_MAXIMO_ROCA:
+        return False
+    return True
+
+
+def particionar_poligonos_sin_solape(
+    detecciones: Sequence[tuple[Poligono, float]],
+    ancho_img: int,
+    alto_img: int,
+    area_minima_px: float,
+    lado_max: int = 1024,
+) -> list[Poligono]:
+    """Asigna cada píxel a una sola roca (mayor confianza) sin tocar rocas aisladas."""
+    if len(detecciones) <= 1:
+        return [pol for pol, _ in detecciones]
+    try:
+        import cv2  # type: ignore[import-not-found]
+    except ImportError:
+        return [pol for pol, _ in detecciones]
+
+    mayor_lado = max(1, ancho_img, alto_img)
+    escala = min(1.0, lado_max / mayor_lado)
+    cw = max(16, int(round(ancho_img * escala)))
+    ch = max(16, int(round(alto_img * escala)))
+    sx_inv = ancho_img / cw
+    sy_inv = alto_img / ch
+
+    ordenadas = sorted(detecciones, key=lambda item: item[1], reverse=True)
+    etiquetas = np.zeros((ch, cw), dtype=np.int32)
+    salida: list[Poligono] = []
+
+    for idx, (pol, _conf) in enumerate(ordenadas, start=1):
+        pts_c = np.array(
+            [
+                [
+                    min(cw - 1, max(0, int(round(p.x * cw / ancho_img)))),
+                    min(ch - 1, max(0, int(round(p.y * ch / alto_img)))),
+                ]
+                for p in pol.puntos
+            ],
+            dtype=np.int32,
+        )
+        x0 = int(pts_c[:, 0].min())
+        y0 = int(pts_c[:, 1].min())
+        x1 = int(pts_c[:, 0].max()) + 1
+        y1 = int(pts_c[:, 1].max()) + 1
+        if x1 <= x0 or y1 <= y0:
+            continue
+
+        sub_m = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+        cv2.fillPoly(sub_m, [pts_c - np.array([x0, y0], dtype=np.int32)], (1,))
+        pix_orig = int(np.count_nonzero(sub_m))
+        if pix_orig == 0:
+            continue
+
+        vista = etiquetas[y0:y1, x0:x1]
+        libre = (sub_m > 0) & (vista == 0)
+        pix_libre = int(np.count_nonzero(libre))
+        if pix_libre < pix_orig * FRACCION_MINIMA_TRAS_PARTICION:
+            continue
+
+        vista[libre] = idx
+        if pix_libre == pix_orig:
+            # Sin solapamiento con vecinas: conservar exactamente el polígono original.
+            salida.append(pol)
+            continue
+
+        c_cv, _ = cv2.findContours(
+            libre.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not c_cv:
+            continue
+        mayor = max(c_cv, key=cv2.contourArea)
+        if len(mayor) < 3 or not _es_geometria_roca_valida(mayor):
+            continue
+        globales = [
+            ((x0 + float(pt[0][0]) + 0.5) * sx_inv, (y0 + float(pt[0][1]) + 0.5) * sy_inv)
+            for pt in mayor
+        ]
+        poligonos = poligonos_desde_contornos(
+            [globales], ancho_img, alto_img, area_minima_px=area_minima_px
+        )
+        if poligonos:
+            salida.append(poligonos[0])
+
+    return salida
 
 
 def _area_minima_segmentacion(ancho_img: int, alto_img: int) -> float:
@@ -282,10 +397,12 @@ def _extraer_detecciones_retina(
     ancho_img: int,
     alto_img: int,
     filtrar_costura: bool,
-    recorte_rgb: np.ndarray | None = None,
     unet: Any | None = None,
+    fg_unet: np.ndarray | None = None,
+    bd_unet: np.ndarray | None = None,
+    indices: Sequence[int] | None = None,
 ) -> list[tuple[Poligono, float]]:
-    """Convierte máscaras `retina_masks=True` a polígonos simples sin líneas puente."""
+    """Convierte máscaras `retina_masks=True` a polígonos limpios (con validación U-Net)."""
     if resultado.masks is None:
         return []
     import cv2  # type: ignore[import-not-found]
@@ -309,16 +426,16 @@ def _extraer_detecciones_retina(
         else None
     )
 
-    usar_unet = unet is not None and recorte_rgb is not None
-    fg_mapa = bd_mapa = None
-    if usar_unet:
-        fg_mapa, bd_mapa = unet.mapas_probabilidad(recorte_rgb)
+    usar_unet = unet is not None and fg_unet is not None and bd_unet is not None
+    uh, uw = fg_unet.shape[:2] if fg_unet is not None else (0, 0)
 
     mascaras_np = resultado.masks.data.cpu().numpy()
+    objetivos = range(len(mascaras_np)) if indices is None else indices
     salida: list[tuple[Poligono, float]] = []
     pad_px = 6 if usar_unet else 2
 
-    for idx, m in enumerate(mascaras_np):
+    for idx in objetivos:
+        m = mascaras_np[idx]
         hm, wm = m.shape[:2]
         if xyxy is not None and idx < len(xyxy):
             bx0, by0, bx1, by1 = (float(v) for v in xyxy[idx])
@@ -341,25 +458,34 @@ def _extraer_detecciones_retina(
         if not np.any(m_crop):
             continue
 
-        if usar_unet and fg_mapa is not None and bd_mapa is not None:
-            if hm != h_pred or wm != w_pred:
-                fx0 = max(0, min(w_pred - 1, int(math.floor(mx0 * w_pred / wm))))
-                fy0 = max(0, min(h_pred - 1, int(math.floor(my0 * h_pred / hm))))
-                fx1 = max(fx0 + 1, min(w_pred, int(math.ceil(mx1 * w_pred / wm))))
-                fy1 = max(fy0 + 1, min(h_pred, int(math.ceil(my1 * h_pred / hm))))
-                fg_crop = cv2.resize(
-                    fg_mapa[fy0:fy1, fx0:fx1],
-                    (m_crop.shape[1], m_crop.shape[0]),
-                    interpolation=cv2.INTER_LINEAR,
-                )
-                bd_crop = cv2.resize(
-                    bd_mapa[fy0:fy1, fx0:fx1],
-                    (m_crop.shape[1], m_crop.shape[0]),
-                    interpolation=cv2.INTER_LINEAR,
-                )
-            else:
-                fg_crop = fg_mapa[my0:my1, mx0:mx1]
-                bd_crop = bd_mapa[my0:my1, mx0:mx1]
+        conf = float(confs[idx]) if confs is not None and idx < len(confs) else 0.5
+        sx = (tx1 - tx0) / max(1, wm)
+        sy = (ty1 - ty0) / max(1, hm)
+
+        if usar_unet and fg_unet is not None and bd_unet is not None:
+            gx0 = tx0 + mx0 * sx
+            gy0 = ty0 + my0 * sy
+            gx1 = tx0 + mx1 * sx
+            gy1 = ty0 + my1 * sy
+            ux0 = max(0, min(uw - 1, int(math.floor(gx0 * uw / ancho_img))))
+            uy0 = max(0, min(uh - 1, int(math.floor(gy0 * uh / alto_img))))
+            ux1 = max(ux0 + 1, min(uw, int(math.ceil(gx1 * uw / ancho_img))))
+            uy1 = max(uy0 + 1, min(uh, int(math.ceil(gy1 * uh / alto_img))))
+            fg_crop = cv2.resize(
+                fg_unet[uy0:uy1, ux0:ux1],
+                (m_crop.shape[1], m_crop.shape[0]),
+                interpolation=cv2.INTER_LINEAR,
+            )
+            bd_crop = cv2.resize(
+                bd_unet[uy0:uy1, ux0:ux1],
+                (m_crop.shape[1], m_crop.shape[0]),
+                interpolation=cv2.INTER_LINEAR,
+            )
+            # Validador híbrido: si YOLO tiene baja confianza y U-Net ve fondo, descartar.
+            if conf < UMBRAL_CONF_CONFIABLE_YOLO:
+                media_fg = float(fg_crop[m_crop > 0].mean())
+                if media_fg < UMBRAL_FG_UNET_MIN:
+                    continue
             m_crop = unet.refinar_mascara_recorte(
                 m_crop, fg_crop, bd_crop, radio_expand=2, radio_recorte=1
             )
@@ -369,10 +495,8 @@ def _extraer_detecciones_retina(
             continue
         # Usar solo el contorno mayor evita las líneas puente de `masks.xy`.
         mayor = max(c_cv, key=cv2.contourArea)
-        if len(mayor) < 3:
+        if len(mayor) < 3 or not _es_geometria_roca_valida(mayor):
             continue
-        sx = (tx1 - tx0) / max(1, wm)
-        sy = (ty1 - ty0) / max(1, hm)
         globales = [
             ((mx0 + float(pt[0][0])) * sx + tx0, (my0 + float(pt[0][1])) * sy + ty0)
             for pt in mayor
@@ -383,10 +507,9 @@ def _extraer_detecciones_retina(
             [globales], ancho_img, alto_img, area_minima_px=area_minima
         )
         if poligonos:
-            conf = float(confs[idx]) if confs is not None and idx < len(confs) else 0.5
             salida.append((poligonos[0], conf))
 
-    del fg_mapa, bd_mapa, mascaras_np
+    del mascaras_np
     return salida
 
 
@@ -524,137 +647,152 @@ class SegmentadorYOLO:
         )
 
     def segmentar(self, imagen: bytes) -> list[Poligono]:
-        """Ejecuta YOLO con `retina_masks=True` por mosaicos si hay muchas rocas (baja RAM)."""
+        """Híbrido rápido: YOLO 1024 retina + 1 sola pasada U-Net + partición sin solape."""
         t0 = time.perf_counter()
         foto = Image.open(io.BytesIO(imagen)).convert("RGB")
         w, h = foto.size
+        foto_pred, w_pred, h_pred = _redimensionar_si_supera(foto, LADO_MAX_UNICO_YOLO)
         resultado = self._modelo.predict(
-            foto,
+            foto_pred,
             imgsz=self._imgsz,
             conf=self._confianza,
             iou=IOU_NMS,
             max_det=self._max_det,
-            retina_masks=False,
+            retina_masks=True,
             verbose=False,
         )[0]
         if resultado.masks is None:
             return []
 
         n_det = len(resultado.masks)
-        mascaras_u8 = (resultado.masks.data.cpu().numpy() > 0.5).astype(np.uint8)
-        boxes = getattr(resultado, "boxes", None)
-        confs = (
-            boxes.conf.cpu().numpy()
-            if boxes is not None and getattr(boxes, "conf", None) is not None
-            else None
-        )
-        xyxy = (
-            boxes.xyxy.cpu().numpy()
-            if boxes is not None and getattr(boxes, "xyxy", None) is not None
-            else None
-        )
-        del resultado
-        gc.collect()
         t_global = time.perf_counter() - t0
 
+        # Una sola pasada de U-Net (640x640) para toda la imagen: valida falsos positivos
+        # de baja confianza y refina bordes sin repetir U-Net por mosaico.
         unet_auto = self._unet if self._refinar_con_unet else None
+        fg_unet = bd_unet = None
+        t_unet_ini = time.perf_counter()
+        if unet_auto is not None:
+            fg_unet, bd_unet = unet_auto.mapas_probabilidad_nativas(
+                np.array(foto_pred, dtype=np.uint8)
+            )
+        t_unet = time.perf_counter() - t_unet_ini
+
         t_malla_ini = time.perf_counter()
         modo = "unico"
+        primarias: list[tuple[Poligono, float]] = []
         if n_det <= UMBRAL_DENSIDAD_MALLA:
-            foto_pred, w_pred, h_pred = _redimensionar_si_supera(foto, LADO_MAX_UNICO_YOLO)
-            res_alta = self._modelo.predict(
-                foto_pred,
-                imgsz=self._imgsz,
-                conf=self._confianza,
-                iou=IOU_NMS,
-                max_det=self._max_det,
-                retina_masks=True,
-                verbose=False,
-            )[0]
-            foto_rgb = np.array(foto_pred, dtype=np.uint8) if unet_auto is not None else None
-            primarias = _extraer_detecciones_retina(
-                res_alta,
+            respaldo = _extraer_detecciones_retina(
+                resultado,
                 (0, 0, w, h),
                 (w_pred, h_pred),
                 w,
                 h,
                 filtrar_costura=False,
-                recorte_rgb=foto_rgb,
                 unet=unet_auto,
+                fg_unet=fg_unet,
+                bd_unet=bd_unet,
             )
-            del res_alta, foto_rgb
+            del resultado
             gc.collect()
+            t_malla = 0.0
+            t_resp = time.perf_counter() - t_malla_ini
         else:
             cuadricula = generar_cuadricula(w, h, n_det)
             modo = f"malla({len(cuadricula)})"
-            primarias = []
+            imgsz_malla = min(self._imgsz, LADO_MAX_MALLA_YOLO)
             for caja in cuadricula:
                 tx0, ty0, tx1, ty1 = caja
                 recorte = foto.crop((tx0, ty0, tx1, ty1))
-                recorte_pred, w_pred, h_pred = _redimensionar_si_supera(
+                recorte_pred, tw_pred, th_pred = _redimensionar_si_supera(
                     recorte, LADO_MAX_MALLA_YOLO
                 )
                 res_tile = self._modelo.predict(
                     recorte_pred,
-                    imgsz=self._imgsz,
+                    imgsz=imgsz_malla,
                     conf=self._confianza,
                     iou=IOU_NMS,
                     max_det=MAX_DET_MALLA,
                     retina_masks=True,
                     verbose=False,
                 )[0]
-                recorte_rgb = (
-                    np.array(recorte_pred, dtype=np.uint8) if unet_auto is not None else None
-                )
                 primarias.extend(
                     _extraer_detecciones_retina(
                         res_tile,
                         caja,
-                        (w_pred, h_pred),
+                        (tw_pred, th_pred),
                         w,
                         h,
                         filtrar_costura=True,
-                        recorte_rgb=recorte_rgb,
                         unet=unet_auto,
+                        fg_unet=fg_unet,
+                        bd_unet=bd_unet,
                     )
                 )
-                del res_tile, recorte_rgb
+                del res_tile
                 gc.collect()
-        t_malla = time.perf_counter() - t_malla_ini
+            t_malla = time.perf_counter() - t_malla_ini
 
-        t_resp_ini = time.perf_counter()
-        indices_resp: list[int] | None = None
-        if primarias and xyxy is not None:
-            cajas_primarias = [_bbox_poligono(p) for p, _ in primarias]
-            cajas_resp: list[Caja] = [
-                (float(b[0]), float(b[1]), float(b[2]), float(b[3])) for b in xyxy
-            ]
-            indices_resp = _filtrar_indices_respaldo(cajas_resp, cajas_primarias)
-        respaldo = _extraer_contornos_mascaras(
-            mascaras_u8, confs, xyxy, (w, h), indices=indices_resp
-        )
-        del mascaras_u8
-        t_resp = time.perf_counter() - t_resp_ini
+            t_resp_ini = time.perf_counter()
+            indices_resp: list[int] | None = None
+            boxes_g = getattr(resultado, "boxes", None)
+            xyxy_g = (
+                boxes_g.xyxy.cpu().numpy()
+                if boxes_g is not None and getattr(boxes_g, "xyxy", None) is not None
+                else None
+            )
+            if primarias and xyxy_g is not None:
+                sx_g = w / max(1, w_pred)
+                sy_g = h / max(1, h_pred)
+                cajas_primarias = [_bbox_poligono(p) for p, _ in primarias]
+                cajas_resp: list[Caja] = [
+                    (
+                        float(b[0]) * sx_g,
+                        float(b[1]) * sy_g,
+                        float(b[2]) * sx_g,
+                        float(b[3]) * sy_g,
+                    )
+                    for b in xyxy_g
+                ]
+                indices_resp = _filtrar_indices_respaldo(cajas_resp, cajas_primarias)
+            respaldo = _extraer_detecciones_retina(
+                resultado,
+                (0, 0, w, h),
+                (w_pred, h_pred),
+                w,
+                h,
+                filtrar_costura=False,
+                unet=unet_auto,
+                fg_unet=fg_unet,
+                bd_unet=bd_unet,
+                indices=indices_resp,
+            )
+            del resultado
+            gc.collect()
+            t_resp = time.perf_counter() - t_resp_ini
 
+        del fg_unet, bd_unet
         t_fus_ini = time.perf_counter()
-        if primarias:
-            salida = fusionar_detecciones(primarias, respaldo)
-        else:
-            salida = [p for p, _ in respaldo]
+        dedup = _fusionar_detecciones_con_confianza(primarias, respaldo)
+        salida = particionar_poligonos_sin_solape(
+            dedup, w, h, area_minima_px=_area_minima_segmentacion(w, h)
+        )
         t_fus = time.perf_counter() - t_fus_ini
         _LOG.info(
-            "Segmentación %dx%d [%s, unet=%s]: global=%d (%.2fs), malla=%d (%.2fs), "
-            "respaldo=%d (%.2fs), fusion=%d (%.2fs), total=%.2fs",
+            "Segmentación %dx%d [%s, unet=%s (%.2fs)]: global=%d (%.2fs), malla=%d (%.2fs), "
+            "respaldo=%d (%.2fs), fusion=%d->%d (%.2fs), total=%.2fs",
             w,
             h,
             modo,
             self._refinar_con_unet,
+            t_unet,
             n_det,
             t_global,
             len(primarias),
             t_malla,
             len(respaldo),
             t_resp,
+            len(dedup),
             len(salida),
             t_fus,
             time.perf_counter() - t0,
@@ -682,7 +820,7 @@ class SegmentadorYOLO:
                 w_pred, h_pred = w_rec, h_rec
             resultado = self._modelo.predict(
                 recorte_pred,
-                imgsz=self._imgsz,
+                imgsz=min(self._imgsz, LADO_MAX_PINCEL_YOLO),
                 conf=min(self._confianza, CONFIANZA_PINCEL),
                 iou=IOU_NMS,
                 max_det=MAX_DET_PINCEL,

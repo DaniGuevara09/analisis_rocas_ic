@@ -50,15 +50,21 @@ def _construir_arquitectura(usar_resnet34: bool = False):
             return self.block(x)
 
     class Up(nn.Module):
-        def __init__(self, in_ch: int, out_ch: int) -> None:
+        def __init__(self, in_ch: int, out_ch: int, align_corners: bool = True) -> None:
             super().__init__()
-            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self._align_corners = align_corners
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=align_corners)
             self.conv = DoubleConv(in_ch, out_ch, residual=True)
 
         def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
             x = self.up(x)
             if x.shape[2:] != skip.shape[2:]:
-                x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=True)
+                x = F.interpolate(
+                    x,
+                    size=skip.shape[2:],
+                    mode="bilinear",
+                    align_corners=self._align_corners,
+                )
             return self.conv(torch.cat([skip, x], dim=1))
 
     if usar_resnet34:
@@ -74,11 +80,11 @@ def _construir_arquitectura(usar_resnet34: bool = False):
                 self.enc2 = backbone.layer2
                 self.enc3 = backbone.layer3
                 self.bottleneck = backbone.layer4
-                self.dec3 = Up(512 + 256, 256)
-                self.dec2 = Up(256 + 128, 128)
-                self.dec1 = Up(128 + 64, 64)
-                self.dec0 = Up(64 + 64, 64)
-                self.dec_full = Up(64 + 32, 32)
+                self.dec3 = Up(512 + 256, 256, align_corners=False)
+                self.dec2 = Up(256 + 128, 128, align_corners=False)
+                self.dec1 = Up(128 + 64, 64, align_corners=False)
+                self.dec0 = Up(64 + 64, 64, align_corners=False)
+                self.dec_full = Up(64 + 32, 32, align_corners=False)
                 self.head_fg = nn.Conv2d(32, 1, 1)
                 self.head_bd = nn.Conv2d(32, 1, 1)
 
@@ -205,8 +211,8 @@ class RefinadorUNet:
 
         # 2 = fondo definitivo, 0 = por resolver, 1 = semilla de la roca tocada/pintada.
         marcadores = np.zeros((h_rec, w_rec), dtype=np.int32)
-        marcadores[fg_prob < 0.2] = 2
-        marcadores[bd_prob > 0.7] = 2
+        marcadores[fg_prob < 0.25] = 2
+        marcadores[bd_prob > 0.50] = 2
         marcadores[0, :] = 2
         marcadores[-1, :] = 2
         marcadores[:, 0] = 2
@@ -279,11 +285,11 @@ class RefinadorUNet:
         anillo_ext = exterior & (~m_bin)
 
         if bd_recorte is not None:
-            mantiene_borde = borde_interno & (fg_recorte > 0.45) & (bd_recorte < 0.55)
-            expande = anillo_ext & (fg_recorte > 0.55) & (bd_recorte < 0.42)
+            mantiene_borde = borde_interno & (fg_recorte > 0.42) & (bd_recorte < 0.48)
+            expande = anillo_ext & (fg_recorte > 0.58) & (bd_recorte < 0.35)
         else:
-            mantiene_borde = borde_interno & (fg_recorte > 0.45)
-            expande = anillo_ext & (fg_recorte > 0.55)
+            mantiene_borde = borde_interno & (fg_recorte > 0.42)
+            expande = anillo_ext & (fg_recorte > 0.58)
 
         ajustada = interior | mantiene_borde | expande
         n_comp, etiquetas, stats, _ = cv2.connectedComponentsWithStats(ajustada.astype(np.uint8))

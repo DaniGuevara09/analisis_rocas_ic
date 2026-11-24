@@ -19,9 +19,9 @@ class Configuracion(BaseSettings):
     ruta_imagenes: str = "/datos/imagenes"
     ruta_modelo: str = "/app/modelos/best.pt"
     ruta_modelo_unet: str = "/app/modelos/unet_best.pth"
-    segmentacion_refinar_unet: bool = False
-    segmentacion_confianza: float = 0.25
-    segmentacion_imgsz: int = 640
+    segmentacion_refinar_unet: bool = True
+    segmentacion_confianza: float = 0.12
+    segmentacion_imgsz: int = 1024
     segmentacion_max_det: int = 1000
     almacen_imagenes: Literal["local", "s3"] = "local"
     s3_endpoint_url: str = ""

@@ -69,17 +69,30 @@ def _recortar(contorno: Iterable[Sequence[float]], ancho_px: float, alto_px: flo
     ]
 
 
+def _tolerancia_adaptativa(puntos: Sequence[Par]) -> float:
+    """Tolerancia Douglas-Peucker proporcional al perímetro (0.8–3.0 px)."""
+    if len(puntos) < 3:
+        return TOLERANCIA_PX
+    perimetro = sum(
+        math.hypot(puntos[i][0] - puntos[i - 1][0], puntos[i][1] - puntos[i - 1][1])
+        for i in range(len(puntos))
+    )
+    return max(0.8, min(3.0, perimetro * 0.004))
+
+
 def poligonos_desde_contornos(
     contornos: Iterable[Iterable[Sequence[float]]],
     ancho_px: float,
     alto_px: float,
     area_minima_px: float = AREA_MINIMA_PX,
-    tolerancia_px: float = TOLERANCIA_PX,
+    tolerancia_px: float | None = None,
 ) -> list[Poligono]:
     """Recorta a la imagen, simplifica y descarta contornos inválidos o diminutos."""
     poligonos: list[Poligono] = []
     for contorno in contornos:
-        puntos = simplificar_anillo(_recortar(contorno, ancho_px, alto_px), tolerancia_px)
+        recortado = _recortar(contorno, ancho_px, alto_px)
+        tol = _tolerancia_adaptativa(recortado) if tolerancia_px is None else tolerancia_px
+        puntos = simplificar_anillo(recortado, tol)
         if len(puntos) < 3:
             continue
         try:

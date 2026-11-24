@@ -6,6 +6,7 @@ from app.adaptadores.salida.segmentacion.segmentador_yolo import (
     _filtrar_indices_respaldo,
     fusionar_detecciones,
     generar_cuadricula,
+    particionar_poligonos_sin_solape,
 )
 from app.dominio.modelo import Poligono, Punto
 
@@ -40,6 +41,25 @@ def test_fusionar_detecciones_prefiere_primarias_y_conserva_respaldo_no_cubierto
     assert roca_gigante_respaldo in resultado
 
 
+def test_fusionar_detecciones_en_pasada_unica_elimina_roca_anidada() -> None:
+    roca_completa = rectangulo(100, 100, 300, 300)
+    subparte_baja_conf = rectangulo(120, 120, 220, 220)
+    otra_roca = rectangulo(400, 100, 520, 220)
+
+    resultado = fusionar_detecciones(
+        primarias=[],
+        respaldo=[
+            (subparte_baja_conf, 0.14),
+            (roca_completa, 0.85),
+            (otra_roca, 0.72),
+        ],
+    )
+
+    assert roca_completa in resultado
+    assert otra_roca in resultado
+    assert subparte_baja_conf not in resultado
+
+
 def test_filtrar_indices_respaldo_omite_cubiertas_y_mantiene_costura_o_faltantes() -> None:
     primarias = [(100.0, 100.0, 200.0, 200.0), (500.0, 500.0, 560.0, 560.0)]
     respaldo = [
@@ -56,3 +76,28 @@ def test_area_minima_segmentacion_mantiene_finos_en_fotos_grandes() -> None:
     assert _area_minima_segmentacion(4000, 2250) == 180.0
     # En imágenes de prueba pequeñas escala proporcionalmente sin romper tests mínimos.
     assert _area_minima_segmentacion(200, 200) == 20.0
+
+
+def test_particionar_poligonos_sin_solape_conserva_aisladas_y_recorta_solape() -> None:
+    roca_principal = rectangulo(100, 100, 300, 300)
+    roca_vecina = rectangulo(250, 100, 450, 300)  # solapa 50px con la principal
+    roca_aislada = rectangulo(600, 100, 750, 250)
+
+    salida = particionar_poligonos_sin_solape(
+        [
+            (roca_vecina, 0.60),
+            (roca_principal, 0.90),
+            (roca_aislada, 0.80),
+        ],
+        ancho_img=1000,
+        alto_img=600,
+        area_minima_px=100.0,
+    )
+
+    assert len(salida) == 3
+    assert roca_principal in salida
+    assert roca_aislada in salida
+    # La vecina recortada no debe superar el área original (o mantiene exactamente igual sin cv2).
+    assert sum(p.area() for p in salida) <= (
+        roca_principal.area() + roca_vecina.area() + roca_aislada.area() + 1.0
+    )
