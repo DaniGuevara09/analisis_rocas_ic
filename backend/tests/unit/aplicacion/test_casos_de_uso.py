@@ -1,4 +1,5 @@
 """Pruebas de los casos de uso de análisis con adaptadores falsos."""
+
 from uuid import uuid4
 
 import pytest
@@ -171,3 +172,22 @@ def test_obtener_imagen_inexistente_lanza_no_encontrado(
 ) -> None:
     with pytest.raises(AnalisisNoEncontrado):
         ObtenerImagen(repositorio, almacen).ejecutar(uuid4())
+
+
+def test_obtener_imagen_usa_consulta_ligera_si_el_repositorio_la_expone(
+    crear: CrearAnalisis, repositorio: RepositorioFalso, almacen: AlmacenFalso
+) -> None:
+    analisis = crear.ejecutar("a", JPG)
+
+    class RepoLigero(RepositorioFalso):
+        def obtener(self, id):  # type: ignore[override]
+            raise AssertionError("No debe cargar todo el agregado para servir la imagen")
+
+        def obtener_meta_imagen(self, id):  # type: ignore[no-untyped-def]
+            item = self.datos.get(id)
+            return None if item is None else (item.imagen.ruta, item.imagen.formato)
+
+    repo_ligero = RepoLigero()
+    repo_ligero.datos = repositorio.datos
+    contenido, formato = ObtenerImagen(repo_ligero, almacen).ejecutar(analisis.id)
+    assert (contenido, formato) == (JPG, "JPG")

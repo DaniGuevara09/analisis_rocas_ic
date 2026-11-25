@@ -1,4 +1,5 @@
 """Pruebas de la API de análisis con adaptadores falsos inyectados."""
+
 from collections.abc import Iterator
 from uuid import uuid4
 
@@ -106,9 +107,7 @@ def test_eliminar_devuelve_204_y_borra_la_imagen(
     assert cliente.get(f"/api/analisis/{id_}").status_code == 404
 
 
-@pytest.mark.parametrize(
-    "contenido, tipo", [(JPG, "image/jpeg"), (PNG, "image/png")]
-)
+@pytest.mark.parametrize("contenido, tipo", [(JPG, "image/jpeg"), (PNG, "image/png")])
 def test_obtener_imagen(cliente: TestClient, contenido: bytes, tipo: str) -> None:
     id_ = crear(cliente, contenido=contenido).json()["id"]
     respuesta = cliente.get(f"/api/analisis/{id_}/imagen")

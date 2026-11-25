@@ -1,4 +1,5 @@
 """Pruebas de la API de calibración y región excluida (imagen de 1600x1200)."""
+
 from collections.abc import Iterator
 from uuid import uuid4
 
@@ -140,11 +141,14 @@ def test_quitar_region_dos_veces_devuelve_204(cliente: TestClient, id_analisis: 
     assert cliente.delete(ruta).status_code == 204
 
 
-@pytest.mark.parametrize("metodo, sufijo, cuerpo", [
-    ("put", "calibracion", CALIBRACION),
-    ("put", "region-excluida", {"poligono": CUADRADO}),
-    ("delete", "region-excluida", None),
-])
+@pytest.mark.parametrize(
+    "metodo, sufijo, cuerpo",
+    [
+        ("put", "calibracion", CALIBRACION),
+        ("put", "region-excluida", {"poligono": CUADRADO}),
+        ("delete", "region-excluida", None),
+    ],
+)
 def test_id_inexistente_devuelve_404(
     cliente: TestClient, metodo: str, sufijo: str, cuerpo: dict | None
 ) -> None:

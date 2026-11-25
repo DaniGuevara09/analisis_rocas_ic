@@ -1,0 +1,40 @@
+.leyenda-rangos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.leyenda-rangos__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.leyenda-rangos__muestra {
+  width: var(--espacio-3);
+  height: var(--espacio-3);
+  border-radius: var(--radio-pequeno);
+}
+
+.leyenda-rangos__intervalo {
+  color: var(--color-texto-secundario);
+}
+
+.leyenda-rangos__cantidad {
+  min-width: var(--espacio-4);
+  text-align: right;
+  font-weight: var(--peso-negrita);
+  font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  .leyenda-rangos__muestra {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

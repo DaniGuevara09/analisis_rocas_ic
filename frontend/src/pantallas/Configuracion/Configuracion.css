@@ -1,0 +1,121 @@
+.configuracion__contenido {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-4);
+  max-width: var(--ancho-contenido-max);
+  margin: 0 auto;
+  padding: var(--espacio-4);
+}
+
+.configuracion__titulo {
+  margin: 0;
+  font-size: var(--tamano-titulo);
+}
+
+.configuracion__ayuda {
+  margin: var(--espacio-1) 0 0;
+  color: var(--color-texto-secundario);
+}
+
+.configuracion__tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-3);
+  padding: var(--espacio-3);
+  background: var(--color-superficie);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-medio);
+}
+
+.configuracion__subtitulo {
+  margin: 0;
+  font-size: var(--tamano-subtitulo);
+}
+
+.configuracion__opciones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-2);
+}
+
+.configuracion__opcion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--espacio-2);
+}
+
+.configuracion__tabla {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.configuracion__tabla th,
+.configuracion__tabla td {
+  padding: var(--espacio-2);
+  border-bottom: var(--borde-grosor) solid var(--color-borde);
+  text-align: left;
+}
+
+.configuracion__tabla th {
+  color: var(--color-texto-secundario);
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.configuracion__color {
+  width: var(--tamano-paso);
+  height: var(--tamano-paso);
+  padding: 0;
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-pequeno);
+  cursor: pointer;
+}
+
+.configuracion__campo {
+  width: var(--ancho-campo-corto);
+  padding: var(--espacio-2);
+  border: var(--borde-grosor) solid var(--color-borde);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: inherit;
+  font-size: var(--tamano-texto);
+}
+
+.configuracion__campo--nombre {
+  width: var(--ancho-campo-nombre);
+}
+
+.configuracion__desde {
+  color: var(--color-texto-secundario);
+  font-variant-numeric: tabular-nums;
+}
+
+.configuracion__vista-previa {
+  display: flex;
+  gap: var(--borde-grosor-enfasis);
+  height: var(--alto-barra-vista-previa);
+}
+
+.configuracion__segmento {
+  flex: 1;
+  border-radius: var(--radio-pequeno);
+}
+
+.configuracion__problema {
+  margin: 0;
+  color: var(--color-error);
+  font-size: var(--tamano-texto-pequeno);
+}
+
+.configuracion__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2);
+}
+
+.configuracion__aviso {
+  margin: 0;
+  color: var(--color-exito);
+  font-weight: var(--peso-negrita);
+}

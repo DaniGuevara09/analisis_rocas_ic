@@ -1,8 +1,10 @@
 """Traducción de errores de dominio a respuestas HTTP `{codigo, detalle}`."""
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.aplicacion.errores import ModeloNoDisponible
 from app.dominio.errores import (
     AnalisisNoEncontrado,
     CalibracionNoValida,
@@ -50,6 +52,11 @@ def registrar_manejadores(app: FastAPI) -> None:
                 estado, codigo = TABLA_ERRORES[clase]  # type: ignore[index]
                 return _respuesta(estado, codigo, str(error))
         return _respuesta(500, "ERROR_INTERNO", "Error interno")
+
+    @app.exception_handler(ModeloNoDisponible)
+    def _modelo_no_disponible(_: Request, error: ModeloNoDisponible) -> JSONResponse:
+        detalle = f"El modelo de segmentacion no esta disponible ({error})"
+        return _respuesta(503, "MODELO_NO_DISPONIBLE", detalle)
 
     @app.exception_handler(ArchivoDemasiadoGrande)
     def _archivo_grande(_: Request, error: ArchivoDemasiadoGrande) -> JSONResponse:

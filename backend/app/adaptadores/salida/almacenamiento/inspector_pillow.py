@@ -1,4 +1,5 @@
 """Inspector de imágenes basado en Pillow."""
+
 from io import BytesIO
 
 from PIL import Image, UnidentifiedImageError

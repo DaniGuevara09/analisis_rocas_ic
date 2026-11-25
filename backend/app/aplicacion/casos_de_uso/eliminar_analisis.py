@@ -1,4 +1,5 @@
 """Caso de uso: eliminar un análisis y su imagen."""
+
 from uuid import UUID
 
 from app.aplicacion.puertos import AlmacenImagenes, RepositorioAnalisis

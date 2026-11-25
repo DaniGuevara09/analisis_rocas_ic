@@ -1,4 +1,5 @@
 """Pruebas del almacén de archivos local."""
+
 from pathlib import Path
 
 import pytest

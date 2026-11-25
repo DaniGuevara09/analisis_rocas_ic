@@ -1,4 +1,5 @@
 """Pruebas de los casos de uso de calibración y región excluida."""
+
 from uuid import uuid4
 
 import pytest

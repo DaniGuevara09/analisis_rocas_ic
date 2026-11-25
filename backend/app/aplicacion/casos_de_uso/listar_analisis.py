@@ -1,4 +1,5 @@
 """Caso de uso: listar los análisis."""
+
 from app.aplicacion.puertos import RepositorioAnalisis
 from app.dominio.modelo import Analisis
 

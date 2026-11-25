@@ -1,4 +1,5 @@
 """Conversión entre el agregado del dominio y las filas de las tablas."""
+
 from typing import Any
 
 from app.adaptadores.salida.persistencia.tablas import (

@@ -52,3 +52,73 @@ export interface RespuestaCalibracion {
   factor_mm_por_px: number;
   estado: EstadoAnalisis;
 }
+
+/** Fragmento que el editor envía en PUT /fragmentos; sin id si es nuevo. */
+export interface FragmentoSolicitud {
+  id?: string;
+  poligono: Punto[];
+  origen: OrigenFragmento;
+}
+
+export interface PuntoCurva {
+  diametro_mm: number;
+  pasante_pct: number;
+}
+
+export interface RangoTamano {
+  indice: number;
+  nombre: string;
+  /** Color "#rrggbb" configurado para el rango (RF-14). */
+  color: string;
+  limite_inferior_mm: number;
+  limite_superior_mm: number | null;
+}
+
+/** Una clase por rango de tamaño (mismo índice que `rangos`); sin límite superior la última. */
+export interface ClaseHistograma {
+  limite_inferior_mm: number;
+  limite_superior_mm: number | null;
+  numero_fragmentos: number;
+  porcentaje_retenido: number;
+}
+
+export interface FragmentoMedido {
+  id: string;
+  diametro_equivalente_mm: number;
+  indice_rango: number;
+}
+
+/** Respuesta de GET /analisis/{id}/resultados. */
+export interface Resultados {
+  d20: number;
+  d50: number;
+  d60: number;
+  d80: number;
+  d90: number;
+  indice_n: number;
+  /** x_c de Rosin-Rammler: tamaño con 63,2 % pasante. */
+  tamano_caracteristico_mm: number;
+  numero_fragmentos: number;
+  curva: PuntoCurva[];
+  /** Curva de Rosin-Rammler ajustada, para superponer a la medida. */
+  curva_teorica: PuntoCurva[];
+  rangos: RangoTamano[];
+  histograma: ClaseHistograma[];
+  fragmentos: FragmentoMedido[];
+  supuestos: string[];
+}
+
+export type ModoRangos = "RELATIVO" | "ABSOLUTO";
+
+/** Configuración de rangos (RF-14): N cortes definen N + 1 rangos con nombre y color. */
+export interface ConfiguracionRangos {
+  modo: ModoRangos;
+  cortes: number[];
+  nombres: string[];
+  colores: string[];
+}
+
+export interface Salud {
+  estado: string;
+  modelo_disponible: boolean;
+}

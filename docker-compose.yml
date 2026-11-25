@@ -2,25 +2,38 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-rocas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_esta_clave}
+      POSTGRES_DB: ${POSTGRES_DB:-analisis_rocas}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rocas} -d ${POSTGRES_DB:-analisis_rocas}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
     build: ./backend
-    env_file: .env
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    # RNF-06: el .env es opcional. Sin él, todo funciona en modo local con los valores por defecto.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://rocas:cambiar_esta_clave@db:5432/analisis_rocas}
+      ALMACEN_IMAGENES: ${ALMACEN_IMAGENES:-local}
+      RUTA_IMAGENES: /datos/imagenes
+      RUTA_MODELO: /app/modelos/best.pt
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - imagenes:/datos/imagenes
+      # Espacio para el modelo entrenado: copiar best.pt en backend/modelos/ (ver su README).
       - ./backend/modelos:/app/modelos
 
   frontend:
@@ -28,7 +41,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "80:80"
+      - "${PUERTO_WEB:-80}:80"
 
 volumes:
   pgdata:

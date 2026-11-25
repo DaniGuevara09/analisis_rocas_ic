@@ -1,4 +1,5 @@
 """Rutas CRUD de análisis (docs/api.md)."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -83,6 +84,10 @@ def eliminar_analisis(
 
 @router.get("/{id}/imagen")
 def obtener_imagen(id: UUID, caso: Annotated[ObtenerImagen, Depends(caso_imagen)]) -> Response:
-    """Devuelve el archivo de imagen del análisis."""
+    """Devuelve el archivo de imagen inmutable del análisis con caché HTTP."""
     contenido, formato = caso.ejecutar(id)
-    return Response(content=contenido, media_type=TIPOS_MIME[formato])
+    return Response(
+        content=contenido,
+        media_type=TIPOS_MIME[formato],
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )

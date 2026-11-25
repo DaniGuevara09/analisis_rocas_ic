@@ -42,11 +42,13 @@ Proyecto de la asignatura **Trabajo de Campo**, Ingeniería de Sistemas y Comput
 | Marcar y quitar la región del objeto de escala (se excluye del conteo) | ✅ |
 | Reanudar el análisis al recargar la página | ✅ |
 | Almacenamiento en la nube (Neon + Cloudflare R2) por configuración | ✅ |
-| Segmentación automática con YOLO | ⏳ Sprint 3 |
-| Editor de fragmentos: borrar, dibujar, unir y dividir | ⏳ Sprint 3 |
-| Resultados: Dx, n, curva, histograma y colores por rango | ⏳ Sprint 3 |
-| Exportación a CSV | ⏳ Sprint 4 |
-| Informe PDF, historial, usuarios con roles | Complementario |
+| Segmentación automática con YOLO (requiere `backend/modelos/best.pt`) | ✅ |
+| Editor de fragmentos: borrar, dibujar, unir, dividir y deshacer | ✅ |
+| Resultados: Dx, n, curva, histograma y colores por rango | ✅ |
+| Informe PDF (desde el navegador) e historial de análisis | ✅ |
+| Exportación a Excel (Resumen, Curva, Fragmentos) y CSV estándar | ✅ |
+| Configurar rangos de tamaño y colores (pantalla Configuración) | ✅ |
+| Usuarios con roles (RF-13) | Complementario, no implementado |
 
 ---
 
@@ -58,7 +60,7 @@ Proyecto de la asignatura **Trabajo de Campo**, Ingeniería de Sistemas y Comput
     * Pydantic v2 + pydantic-settings
     * Pillow (detección del formato de imagen por contenido)
     * boto3 (Cloudflare R2, compatible con S3)
-    * Ultralytics YOLOv11m-seg *(se integra en el Sprint 3)*
+    * Ultralytics YOLOv11m-seg (torch solo CPU dentro de Docker)
     * pytest + ruff · pruebas de S3 con moto
 * **Frontend:**
     * React 18 + TypeScript estricto + Vite
@@ -92,7 +94,7 @@ flowchart LR
 
     P1 --> PG[("PostgreSQL<br/>local / Neon")]
     P2 --> IMG[("Imágenes<br/>volumen local / R2")]
-    P3 --> YOLO["YOLO<br/>(Sprint 3)"]
+    P3 --> YOLO["YOLOv11m-seg<br/>best.pt"]
 ```
 
 Reglas que vigila una prueba automática (`tests/unit/test_arquitectura.py`):
@@ -106,6 +108,8 @@ El detalle está en [`docs/arquitectura.md`](docs/arquitectura.md), [`docs/domin
 ---
 
 ## Instalación y ejecución
+
+> 📘 **Guía completa del sistema** (flujo detallado, cálculos, modelo de IA y todos los comandos de prueba): [`docs/GUIA_DEL_SISTEMA.md`](docs/GUIA_DEL_SISTEMA.md). Prueba de humo de punta a punta: `powershell -ExecutionPolicy Bypass -File scripts\prueba_humo.ps1`.
 
 ### Requisitos previos
 
@@ -124,13 +128,13 @@ git clone https://github.com/Cristian13Galindo/analisis_rocas.git
 cd analisis_rocas
 ```
 
-### 2. Crear el archivo de entorno local
+### 2. (Opcional) Crear el archivo de entorno local
+
+No es obligatorio: sin `.env` el sistema arranca en modo local con valores por defecto (RNF-06). Si quieres cambiar algo:
 
 ```powershell
 Copy-Item .env.example .env
 ```
-
-Los valores por defecto de `.env.example` sirven tal cual para trabajar en local. **No hace falta editar nada.**
 
 ### 3. Levantar el sistema
 
@@ -143,6 +147,10 @@ La primera vez tarda varios minutos (descarga imágenes e instala dependencias).
 ```
 backend-1  | INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
+
+### 3.1 (Opcional) Copiar el modelo de IA
+
+Copia `best.pt` (Drive del equipo, ver `docs/ia.md`) a `backend/modelos/best.pt` antes de `docker compose up --build`. Sin ese archivo la aplicación arranca igual, pero el botón **Segmentar con IA** responde que el modelo no está disponible; los fragmentos se pueden dibujar a mano.
 
 ### 4. Usar el sistema
 

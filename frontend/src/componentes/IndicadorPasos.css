@@ -1,7 +1,7 @@
 .pasos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--espacio-4);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--espacio-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -9,34 +9,44 @@
 
 .pasos__paso {
   display: flex;
-  align-items: center;
-  gap: var(--espacio-2);
+  flex-direction: column;
+  gap: var(--espacio-1);
+  min-width: 0;
   color: var(--color-texto-secundario);
 }
 
-.pasos__numero {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--tamano-paso);
-  height: var(--tamano-paso);
-  border: var(--borde-grosor-enfasis) solid var(--color-borde);
-  border-radius: var(--radio-redondo);
+.pasos__barra {
+  height: var(--alto-barra-etapa);
+  border-radius: var(--radio-pequeno);
+  background: var(--color-borde);
+}
+
+.pasos__estado {
+  font-size: var(--tamano-texto-mini);
+}
+
+.pasos__nombre {
+  font-size: var(--tamano-texto-pequeno);
   font-weight: var(--peso-negrita);
 }
 
-.pasos__paso--actual {
-  color: var(--color-acento);
-  font-weight: var(--peso-negrita);
+.pasos__paso--hecho .pasos__barra {
+  background: var(--color-exito);
 }
 
-.pasos__paso--actual .pasos__numero {
+.pasos__paso--hecho .pasos__estado {
+  color: var(--color-exito);
+}
+
+.pasos__paso--hecho .pasos__nombre {
+  color: var(--color-texto);
+}
+
+.pasos__paso--actual .pasos__barra {
   background: var(--color-acento);
-  border-color: var(--color-acento);
-  color: var(--color-sobre-acento);
 }
 
-.pasos__paso--hecho .pasos__numero {
-  border-color: var(--color-acento);
+.pasos__paso--actual .pasos__estado,
+.pasos__paso--actual .pasos__nombre {
   color: var(--color-acento);
 }

@@ -1,4 +1,5 @@
 """Entidades del dominio: Analisis, Calibracion, RegionExcluida, Fragmento, Poligono, Punto."""
+
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -7,6 +8,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from app.dominio import granulometria
+from app.dominio.configuracion import CONFIGURACION_POR_DEFECTO, ConfiguracionRangos
 from app.dominio.errores import (
     CalibracionNoValida,
     DatosNoValidos,
@@ -17,24 +19,37 @@ from app.dominio.errores import (
     ImagenNoValida,
     PoligonoNoValido,
 )
-from app.dominio.resultado import PuntoCurva, ResultadoGranulometrico
+from app.dominio.resultado import (
+    ClaseHistograma,
+    FragmentoMedido,
+    PuntoCurva,
+    RangoTamano,
+    ReporteGranulometrico,
+    ResultadoGranulometrico,
+)
 
 __all__ = [
     "Analisis",
     "Calibracion",
+    "ClaseHistograma",
     "EstadoAnalisis",
     "Fragmento",
+    "FragmentoMedido",
     "Imagen",
     "OrigenFragmento",
     "Poligono",
     "Punto",
     "PuntoCurva",
+    "RangoTamano",
     "RegionExcluida",
+    "ReporteGranulometrico",
     "ResultadoGranulometrico",
 ]
 
 FORMATOS_IMAGEN = ("JPG", "PNG")
 TOLERANCIA_AREA_PX = 1e-9
+# Área mínima de un fragmento: por debajo de 1 px² es ruido geométrico degenerado.
+AREA_MINIMA_FRAGMENTO_PX2 = 1.0
 LONGITUD_MAXIMA_NOMBRE = 150
 
 
@@ -46,6 +61,15 @@ def _validar_nombre(nombre: str) -> str:
     if len(limpio) > LONGITUD_MAXIMA_NOMBRE:
         raise DatosNoValidos(f"El nombre no puede superar {LONGITUD_MAXIMA_NOMBRE} caracteres")
     return limpio
+
+
+def _validar_area_minima(poligono: "Poligono") -> None:
+    """Rechaza polígonos menores que AREA_MINIMA_FRAGMENTO_PX2 (clics accidentales)."""
+    if poligono.area() < AREA_MINIMA_FRAGMENTO_PX2:
+        raise PoligonoNoValido(
+            f"Fragmento demasiado pequeño ({poligono.area():.1f} px²); "
+            f"el mínimo es {AREA_MINIMA_FRAGMENTO_PX2:.0f} px²"
+        )
 
 
 class EstadoAnalisis(Enum):
@@ -268,12 +292,31 @@ class Analisis:
     def agregar_fragmento(self, poligono: Poligono) -> Fragmento:
         """Agrega un fragmento dibujado a mano; no puede caer en la región excluida."""
         self._exigir_calibracion()
+        _validar_area_minima(poligono)
         if self._en_region_excluida(poligono):
             raise FragmentoEnRegionExcluida("El fragmento cae en la region excluida")
         fragmento = Fragmento.crear(poligono, OrigenFragmento.MANUAL)
         self.fragmentos.append(fragmento)
         self.estado = EstadoAnalisis.SEGMENTADO
         return fragmento
+
+    def reemplazar_fragmentos(self, fragmentos: Sequence[Fragmento]) -> None:
+        """Reemplaza la lista completa por la editada por el operador (RF-05).
+
+        Valida todo antes de cambiar: ids únicos, área mínima, vértices dentro de la
+        imagen y ningún centroide en la región excluida. Deja el estado en SEGMENTADO.
+        """
+        self._exigir_calibracion()
+        if len({f.id for f in fragmentos}) != len(fragmentos):
+            raise DatosNoValidos("Hay fragmentos con el mismo id")
+        for fragmento in fragmentos:
+            _validar_area_minima(fragmento.poligono)
+            if not all(self._dentro_de_imagen(p) for p in fragmento.poligono.puntos):
+                raise PoligonoNoValido("Los fragmentos deben estar dentro de la imagen")
+            if self._en_region_excluida(fragmento.poligono):
+                raise FragmentoEnRegionExcluida("Un fragmento cae en la region excluida")
+        self.fragmentos = list(fragmentos)
+        self.estado = EstadoAnalisis.SEGMENTADO
 
     def eliminar_fragmento(self, id_fragmento: UUID) -> None:
         """Elimina un fragmento por su id."""
@@ -288,6 +331,27 @@ class Analisis:
         factor = self.factor_mm_por_px()
         diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
         return granulometria.calcular(diametros)
+
+    def generar_reporte(
+        self, configuracion: ConfiguracionRangos = CONFIGURACION_POR_DEFECTO
+    ) -> ReporteGranulometrico:
+        """Resultado, rangos de color (según la configuración), histograma y diámetros."""
+        factor = self.factor_mm_por_px()
+        diametros = [f.diametro_equivalente_mm(factor) for f in self.fragmentos]
+        resultado = granulometria.calcular(diametros)
+        rangos = configuracion.rangos(resultado.curva)
+        medidos = tuple(
+            FragmentoMedido(f.id, d, granulometria.indice_rango(d, rangos))
+            for f, d in zip(self.fragmentos, diametros, strict=True)
+        )
+        return ReporteGranulometrico(
+            resultado=resultado,
+            rangos=rangos,
+            nombres_rangos=configuracion.nombres,
+            colores_rangos=configuracion.colores,
+            histograma=granulometria.histograma(diametros, rangos),
+            fragmentos=medidos,
+        )
 
     def _exigir_calibracion(self) -> Calibracion:
         if self.calibracion is None:

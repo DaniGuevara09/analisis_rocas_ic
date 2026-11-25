@@ -1,0 +1,24 @@
+.vista-fragmentos {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radio-medio);
+  background: var(--color-lienzo);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.vista-fragmentos__poligono {
+  fill-opacity: var(--alfa-relleno-fragmento);
+  stroke-width: var(--borde-grosor-enfasis);
+  vector-effect: non-scaling-stroke;
+}
+
+.vista-fragmentos__poligono:hover {
+  fill-opacity: var(--alfa-relleno-seleccionado);
+}
+
+.vista-fragmentos__poligono--sin-rango {
+  fill: var(--color-fragmento);
+  stroke: var(--color-fragmento);
+}

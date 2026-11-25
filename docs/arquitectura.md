@@ -56,7 +56,8 @@ analisis_rocas/
         ├── api/                  # cliente HTTP tipado según docs/api.md
         ├── componentes/          # piezas reutilizables (botón, indicador de pasos, tabla...)
         ├── editor/               # editor de polígonos con Konva
-        └── pantallas/            # MisAnalisis, NuevoAnalisis, Calibracion, Editor, Resultados
+        ├── graficos/             # curva, histograma y vista de fragmentos en SVG
+        └── pantallas/            # MisAnalisis, NuevoAnalisis, CalibrarExcluir, EditorFragmentos, Resultados
 ```
 
 ## Puertos (capa de aplicación)
@@ -78,6 +79,10 @@ class AlmacenImagenes(Protocol):
 
 class InspectorImagenes(Protocol):
     def inspeccionar(self, contenido: bytes) -> tuple[str, int, int]: ...  # (formato "JPG"|"PNG", ancho_px, alto_px)
+
+class RepositorioConfiguracion(Protocol):                    # RF-14, tabla `configuracion` (migración 0002)
+    def obtener_rangos(self) -> ConfiguracionRangos | None: ...
+    def guardar_rangos(self, configuracion: ConfiguracionRangos | None) -> None: ...  # None = por defecto
 ```
 
 `InspectorImagenes` existe porque detectar formato y dimensiones requiere Pillow, que no puede estar en dominio ni aplicación. El formato se detecta por el contenido del archivo, no por la extensión ni el content-type; si no es JPG ni PNG, el adaptador (`InspectorImagenesPillow`) lanza `FormatoImagenNoValido`.
@@ -96,6 +101,8 @@ Volúmenes: `imagenes` (fotografías) y `pgdata` (datos de PostgreSQL).
 
 En desarrollo se permite exponer 8000 y 5432 en `localhost` mediante un `docker-compose.override.yml`.
 
+**RNF-06:** el `.env` es opcional (`env_file` con `required: false`). Sin él, `docker-compose.yml` usa valores locales por defecto (`POSTGRES_*`, `DATABASE_URL` hacia el contenedor `db`, `ALMACEN_IMAGENES=local`). `PUERTO_WEB` (por defecto 80) cambia el puerto publicado del frontend.
+
 ### Almacén de imágenes por configuración
 
 `ALMACEN_IMAGENES` (`local` por defecto, o `s3`) decide qué adaptador de `AlmacenImagenes` crea `crear_almacen(config)` en `main.py`. `imagen_ruta` guarda indistintamente la ruta relativa local o la clave S3 (`imagenes/<uuid>.<ext>`); el esquema de la BD no cambia.
@@ -104,6 +111,18 @@ En desarrollo se permite exponer 8000 y 5432 en `localhost` mediante un `docker-
 |---|---|---|
 | `AlmacenArchivosLocal` | `AlmacenImagenes` | Carpeta `RUTA_IMAGENES` (volumen `imagenes`) |
 | `AlmacenImagenesS3` | `AlmacenImagenes` | Bucket privado S3/R2 con boto3; cliente inyectado (`crear_cliente_s3`) |
+
+### Segmentador por configuración
+
+`crear_segmentador(config)` en `main.py` crea `SegmentadorYOLO` si existe el archivo `RUTA_MODELO`; si no existe o no carga, crea `SegmentadorNoDisponible` y la app **arranca igual**: solo `POST /segmentacion` responde `503 MODELO_NO_DISPONIBLE` (RNF-06: los pesos no se versionan).
+
+| Adaptador | Puerto | Detalle |
+|---|---|---|
+| `SegmentadorYOLO` | `Segmentador` | ultralytics, carga el modelo una vez; `imgsz=640`, `conf=0.25`, `iou=0.5`, `max_det=1000`, `retina_masks=False`. `import ultralytics` diferido |
+| `SegmentadorNoDisponible` | `Segmentador` | Lanza `ModeloNoDisponible` (error de aplicación) |
+| `contornos.poligonos_desde_contornos` | — | Función pura: recorta a la imagen, simplifica con Douglas-Peucker (1 px, implementación propia sin OpenCV) y descarta contornos de menos de 3 puntos, colineales o de área < 20 px² |
+
+Dependencias: el extra `[yolo]` de `pyproject.toml` (`ultralytics`). El Dockerfile instala antes `torch` solo CPU y `libgl1`/`libglib2.0-0` para OpenCV. Para desarrollar fuera de Docker no hace falta: `pip install -e ".[dev]"` no trae torch y las pruebas del modelo real se saltan.
 
 Con `s3` son obligatorias `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY` (`S3_REGION=auto` para R2); si falta alguna, la app no arranca y el error no imprime valores.
 

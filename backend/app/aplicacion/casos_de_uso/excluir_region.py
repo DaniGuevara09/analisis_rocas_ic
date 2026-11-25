@@ -1,4 +1,5 @@
 """Caso de uso: marcar la región del objeto de escala que se excluye."""
+
 from collections.abc import Sequence
 from uuid import UUID
 

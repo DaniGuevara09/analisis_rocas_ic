@@ -1,4 +1,5 @@
 """Configuración por variables de entorno."""
+
 from typing import Literal
 
 from pydantic import model_validator
@@ -17,6 +18,11 @@ class Configuracion(BaseSettings):
     database_url: str = "postgresql+psycopg://rocas:rocas@localhost:5432/analisis_rocas"
     ruta_imagenes: str = "/datos/imagenes"
     ruta_modelo: str = "/app/modelos/best.pt"
+    ruta_modelo_unet: str = "/app/modelos/unet_best.pth"
+    segmentacion_refinar_unet: bool = False
+    segmentacion_confianza: float = 0.12
+    segmentacion_imgsz: int = 1024
+    segmentacion_max_det: int = 1000
     almacen_imagenes: Literal["local", "s3"] = "local"
     s3_endpoint_url: str = ""
     s3_bucket: str = ""
@@ -39,9 +45,7 @@ class Configuracion(BaseSettings):
                 if not getattr(self, nombre)
             ]
             if faltantes:
-                raise ValueError(
-                    "ALMACEN_IMAGENES=s3 requiere definir: " + ", ".join(faltantes)
-                )
+                raise ValueError("ALMACEN_IMAGENES=s3 requiere definir: " + ", ".join(faltantes))
         return self
 
 

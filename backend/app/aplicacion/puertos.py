@@ -1,14 +1,21 @@
-"""Puertos: Segmentador, RepositorioAnalisis, AlmacenImagenes e InspectorImagenes."""
+"""Puertos: Segmentador, RepositorioAnalisis, RepositorioConfiguracion, AlmacenImagenes e
+InspectorImagenes."""
+
 from typing import Protocol
 from uuid import UUID
 
-from app.dominio.modelo import Analisis, Poligono
+from app.dominio.configuracion import ConfiguracionRangos
+from app.dominio.modelo import Analisis, Poligono, Punto
 
 
 class Segmentador(Protocol):
     """Segmenta una imagen en polígonos de fragmentos (en píxeles). Solo se declara."""
 
     def segmentar(self, imagen: bytes) -> list[Poligono]: ...
+
+    def segmentar_zona(
+        self, imagen: bytes, trazo: list[Punto], radio_px: float
+    ) -> Poligono | None: ...
 
 
 class RepositorioAnalisis(Protocol):
@@ -43,4 +50,16 @@ class InspectorImagenes(Protocol):
 
         Lanza `FormatoImagenNoValido` si el contenido no es una imagen JPG o PNG.
         """
+        ...
+
+
+class RepositorioConfiguracion(Protocol):
+    """Persistencia de la configuración global (rangos de tamaño y colores, RF-14)."""
+
+    def obtener_rangos(self) -> ConfiguracionRangos | None:
+        """Configuración guardada o None si se usa la de por defecto."""
+        ...
+
+    def guardar_rangos(self, configuracion: ConfiguracionRangos | None) -> None:
+        """Guarda la configuración; None vuelve a la de por defecto."""
         ...

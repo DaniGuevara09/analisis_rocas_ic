@@ -24,6 +24,7 @@ docker-compose.override.yml
 
 # Modelo de IA (no se versiona)
 backend/modelos/*.pt
+backend/modelos/*.pth
 
 # Editores y sistema
 .vscode/

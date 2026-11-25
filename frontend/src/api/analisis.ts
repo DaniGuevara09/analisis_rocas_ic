@@ -1,5 +1,15 @@
 import { ErrorApi } from "./errores";
-import type { AnalisisDetalle, AnalisisResumen, Punto, RespuestaCalibracion } from "./tipos";
+import type {
+  AnalisisDetalle,
+  AnalisisResumen,
+  ConfiguracionRangos,
+  Fragmento,
+  FragmentoSolicitud,
+  Punto,
+  RespuestaCalibracion,
+  Resultados,
+  Salud,
+} from "./tipos";
 
 const BASE = "/api";
 const CODIGO_DESCONOCIDO = "ERROR_DESCONOCIDO";
@@ -95,4 +105,66 @@ export async function excluirRegion(id: string, poligono: Punto[]): Promise<Anal
 
 export async function quitarRegion(id: string): Promise<void> {
   await solicitar(`/analisis/${id}/region-excluida`, { method: "DELETE" });
+}
+
+/** Segmenta con el modelo; reemplaza todos los fragmentos (incluidos los editados). */
+export async function segmentar(id: string): Promise<Fragmento[]> {
+  const respuesta = await solicitar(`/analisis/${id}/segmentacion`, { method: "POST" });
+  return (await respuesta.json()) as Fragmento[];
+}
+
+/** Segmenta con IA la región pintada con el pincel mágico; devuelve el polígono o null. */
+export async function segmentarConPincel(
+  id: string,
+  trazo: Punto[],
+  radioPx: number,
+): Promise<Punto[] | null> {
+  const respuesta = await solicitar(
+    `/analisis/${id}/pincel-magico`,
+    conJson("POST", { trazo, radio_px: radioPx }),
+  );
+  const datos = (await respuesta.json()) as { poligono: Punto[] | null };
+  return datos.poligono;
+}
+
+/** Guarda la lista completa de fragmentos editada. */
+export async function guardarFragmentos(
+  id: string,
+  fragmentos: FragmentoSolicitud[],
+): Promise<Fragmento[]> {
+  const respuesta = await solicitar(`/analisis/${id}/fragmentos`, conJson("PUT", { fragmentos }));
+  return (await respuesta.json()) as Fragmento[];
+}
+
+export async function obtenerResultados(id: string): Promise<Resultados> {
+  return (await (await solicitar(`/analisis/${id}/resultados`)).json()) as Resultados;
+}
+
+/** URL de descarga del CSV de resultados (RF-09). */
+export function urlCsv(id: string): string {
+  return `${BASE}/analisis/${id}/resultados.csv`;
+}
+
+export function urlXlsx(id: string): string {
+  return `${BASE}/analisis/${id}/resultados.xlsx`;
+}
+
+export async function obtenerSalud(): Promise<Salud> {
+  return (await (await solicitar("/salud")).json()) as Salud;
+}
+
+export async function obtenerConfiguracionRangos(): Promise<ConfiguracionRangos> {
+  return (await (await solicitar("/configuracion/rangos")).json()) as ConfiguracionRangos;
+}
+
+export async function guardarConfiguracionRangos(
+  configuracion: ConfiguracionRangos,
+): Promise<ConfiguracionRangos> {
+  const respuesta = await solicitar("/configuracion/rangos", conJson("PUT", configuracion));
+  return (await respuesta.json()) as ConfiguracionRangos;
+}
+
+export async function restablecerConfiguracionRangos(): Promise<ConfiguracionRangos> {
+  const respuesta = await solicitar("/configuracion/rangos", { method: "DELETE" });
+  return (await respuesta.json()) as ConfiguracionRangos;
 }

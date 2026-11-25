@@ -1,4 +1,5 @@
 """Pruebas de las entidades y objetos de valor del dominio."""
+
 import dataclasses
 from uuid import UUID
 
