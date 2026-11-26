@@ -65,16 +65,55 @@ if nn is not None:
             return self.block(x)
 
     class Up(nn.Module):
-        def __init__(self, in_ch, out_ch):
+        def __init__(self, in_ch, out_ch, align_corners=True):
             super().__init__()
-            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self._align_corners = align_corners
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=align_corners)
             self.conv = DoubleConv(in_ch, out_ch, residual=True)
 
         def forward(self, x, skip):
             x = self.up(x)
             if x.shape[2:] != skip.shape[2:]:
-                x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=True)
+                x = F.interpolate(
+                    x, size=skip.shape[2:], mode="bilinear", align_corners=self._align_corners
+                )
             return self.conv(torch.cat([skip, x], dim=1))
+
+    class UNetDualHeadResNet34(nn.Module):
+        """U-Net Dual-Head con encoder ResNet-34 (V3 640px y V3 1024px letterbox)."""
+
+        def __init__(self, pretrained=False):
+            super().__init__()
+            from torchvision.models import ResNet34_Weights, resnet34
+
+            weights = ResNet34_Weights.IMAGENET1K_V1 if pretrained else None
+            backbone = resnet34(weights=weights)
+            self.input_conv = DoubleConv(3, 32, residual=True)
+            self.enc0 = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)
+            self.enc1 = nn.Sequential(backbone.maxpool, backbone.layer1)
+            self.enc2 = backbone.layer2
+            self.enc3 = backbone.layer3
+            self.bottleneck = backbone.layer4
+            self.dec3 = Up(512 + 256, 256, align_corners=False)
+            self.dec2 = Up(256 + 128, 128, align_corners=False)
+            self.dec1 = Up(128 + 64, 64, align_corners=False)
+            self.dec0 = Up(64 + 64, 64, align_corners=False)
+            self.dec_full = Up(64 + 32, 32, align_corners=False)
+            self.head_fg = nn.Conv2d(32, 1, 1)
+            self.head_bd = nn.Conv2d(32, 1, 1)
+
+        def forward(self, x):
+            s_in = self.input_conv(x)
+            s0 = self.enc0(x)
+            s1 = self.enc1(s0)
+            s2 = self.enc2(s1)
+            s3 = self.enc3(s2)
+            d = self.dec3(self.bottleneck(s3), s3)
+            d = self.dec2(d, s2)
+            d = self.dec1(d, s1)
+            d = self.dec0(d, s0)
+            d = self.dec_full(d, s_in)
+            return self.head_fg(d), self.head_bd(d)
 
     class UNetDualHead(nn.Module):
         def __init__(self, in_channels=3, features=(64, 128, 256, 512)):
@@ -275,17 +314,60 @@ def train_unet(train_img_dir, train_coco_json, val_img_dir=None, val_coco_json=N
         if metric > best:
             best = metric
             os.makedirs(os.path.dirname(str(out_path)) or ".", exist_ok=True)
-            torch.save({"epoch": ep, "model_state_dict": model.state_dict(), **row}, out_path)
+            torch.save(
+                {
+                    "epoch": ep,
+                    "img_size": img_size,
+                    "letterbox": False,
+                    "model_state_dict": model.state_dict(),
+                    **row,
+                },
+                out_path,
+            )
         history.append(row)
         if ep == 1 or ep % 5 == 0:
             print(row)
     return out_path, history
 
 
-# ------------------------------------------------------------------ post-proceso
-def watershed_instances(fg_prob, bd_prob, fg_thresh=0.5, bd_thresh=0.4, min_distance=8, min_area=200):
+# ------------------------------------------------------------------ letterbox y post-proceso
+def letterbox_image(img, target_size, pad_val=0, is_mask=False):
+    """Redimensiona preservando relación de aspecto con relleno centrado en `target_size`."""
+    h, w = img.shape[:2]
+    scale = min(target_size / float(max(1, w)), target_size / float(max(1, h)))
+    nw = max(1, min(target_size, int(round(w * scale))))
+    nh = max(1, min(target_size, int(round(h * scale))))
+    interp = cv2.INTER_NEAREST if is_mask else (cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
+    resized = cv2.resize(img, (nw, nh), interpolation=interp)
+    shape = (target_size, target_size) if img.ndim == 2 else (target_size, target_size, img.shape[2])
+    canvas = np.full(shape, pad_val, dtype=img.dtype)
+    pad_x = (target_size - nw) // 2
+    pad_y = (target_size - nh) // 2
+    canvas[pad_y : pad_y + nh, pad_x : pad_x + nw] = resized
+    return canvas, (pad_x, pad_y, nw, nh)
+
+
+def unpad_letterbox(arr, box):
+    """Recorta la región válida `(nh, nw)` sin las bandas de relleno del letterbox."""
+    pad_x, pad_y, nw, nh = box
+    return arr[pad_y : pad_y + nh, pad_x : pad_x + nw]
+
+
+def watershed_instances(
+    fg_prob,
+    bd_prob,
+    fg_thresh=0.5,
+    bd_thresh=0.45,
+    min_distance=10,
+    min_area=200,
+    scale_ref=640.0,
+):
+    """Watershed guiado por bordes con escalado automático a 640px o 1024px."""
     from skimage.feature import peak_local_max
     from skimage.segmentation import watershed
+
+    h, w = fg_prob.shape[:2]
+    scale = max(1.0, max(h, w) / float(scale_ref))
     fg = (fg_prob > fg_thresh).astype(np.uint8)
     seeds = np.clip(fg - (bd_prob > bd_thresh).astype(np.uint8), 0, 1)
     if seeds.sum() < 0.05 * max(fg.sum(), 1):
@@ -293,14 +375,19 @@ def watershed_instances(fg_prob, bd_prob, fg_thresh=0.5, bd_thresh=0.4, min_dist
         # entrenado o umbral muy bajo): se usa el foreground como semilla
         seeds = fg.copy()
     dist = ndi.distance_transform_edt(seeds)
-    coords = peak_local_max(dist, min_distance=min_distance, labels=fg)
+    dist_smooth = ndi.gaussian_filter(dist, sigma=1.2 * scale)
+    eff_min_dist = max(4, int(round(min_distance * scale)))
+    coords = peak_local_max(dist_smooth, min_distance=eff_min_dist, labels=fg)
     markers = np.zeros(dist.shape, np.int32)
     if len(coords):
         markers[coords[:, 0], coords[:, 1]] = np.arange(1, len(coords) + 1)
     else:
         markers, _ = ndi.label(seeds)
-    labels = watershed(-dist, markers, mask=fg)
-    return labels_to_masks(labels, min_area)
+    d_norm = dist_smooth / (dist_smooth.max() + 1e-6)
+    elevation = bd_prob.astype(np.float32) * 0.70 - d_norm.astype(np.float32) * 0.30
+    eff_min_area = max(1, int(round(min_area * (scale ** 2))))
+    labels = watershed(elevation, markers, mask=fg)
+    return labels_to_masks(labels, eff_min_area)
 
 
 def semantic_instances(fg_prob, fg_thresh=0.5, min_area=200):
@@ -315,44 +402,87 @@ def labels_to_masks(labels, min_area):
 
 
 class UNetSegmenter(BaseSegmenter):
-    def __init__(self, weights=config.UNET_WEIGHTS, img_size=512, mode="instance",
-                 fg_thresh=0.5, bd_thresh=0.4, min_distance=8, min_area=200, device=None):
+    def __init__(self, weights=config.UNET_WEIGHTS, img_size=None, mode="instance",
+                 fg_thresh=0.5, bd_thresh=0.45, min_distance=10, min_area=200,
+                 letterbox=None, device=None):
         assert mode in ("instance", "semantic")
         self.device = device or config.device()
         self.weights = str(weights)
-        self.model = UNetDualHead().to(self.device).eval()
-        ck = torch.load(self.weights, map_location=self.device)
-        self.model.load_state_dict(ck.get("model_state_dict", ck))
-        self.sz, self.mode = img_size, mode
+        ck = torch.load(self.weights, map_location=self.device, weights_only=False)
+        es_dict = isinstance(ck, dict)
+        state = ck.get("model_state_dict", ck) if es_dict else ck
+        use_resnet34 = isinstance(state, dict) and "input_conv.conv.0.weight" in state
+        self.model = (
+            UNetDualHeadResNet34(pretrained=False) if use_resnet34 else UNetDualHead()
+        ).to(self.device).eval()
+        self.model.load_state_dict(state)
+        self.sz = (
+            int(img_size)
+            if img_size is not None
+            else (int(ck.get("img_size", 512)) if es_dict else 512)
+        )
+        self.letterbox = (
+            bool(letterbox)
+            if letterbox is not None
+            else (bool(ck.get("letterbox", False)) if es_dict else False)
+        )
+        self.mode = mode
         self.kw = dict(fg_thresh=fg_thresh, bd_thresh=bd_thresh, min_distance=min_distance,
                        min_area=min_area)
         self.name = "U-Net" if mode == "instance" else "U-Net semántica"
         self.mean = np.array([0.485, 0.456, 0.406], np.float32)
         self.std = np.array([0.229, 0.224, 0.225], np.float32)
 
-    def prob_maps(self, img_rgb):
-        """Probabilidades fg y borde a la resolución original."""
-        h, w = img_rgb.shape[:2]
-        x = cv2.resize(img_rgb, (self.sz, self.sz)).astype(np.float32) / 255.0
+    def prob_maps_native(self, img_rgb):
+        """Probabilidades fg y borde en resolución nativa (sin bandas si usa letterbox)."""
+        box = None
+        if self.letterbox:
+            canvas, box = letterbox_image(img_rgb, self.sz, pad_val=0, is_mask=False)
+            x = canvas.astype(np.float32) / 255.0
+        else:
+            x = cv2.resize(img_rgb, (self.sz, self.sz), interpolation=cv2.INTER_AREA).astype(
+                np.float32
+            ) / 255.0
         x = torch.from_numpy(((x - self.mean) / self.std).transpose(2, 0, 1)).unsqueeze(0).to(self.device)
         with torch.no_grad(), torch.autocast(device_type="cuda", enabled=self.device == "cuda"):
             fl, bl = self.model(x)
         fg = torch.sigmoid(fl.float()).squeeze().cpu().numpy()
         bd = torch.sigmoid(bl.float()).squeeze().cpu().numpy()
-        return (cv2.resize(fg, (w, h), interpolation=cv2.INTER_LINEAR),
-                cv2.resize(bd, (w, h), interpolation=cv2.INTER_LINEAR))
+        if box is not None:
+            fg = unpad_letterbox(fg, box)
+            bd = unpad_letterbox(bd, box)
+        return fg, bd
+
+    def prob_maps(self, img_rgb):
+        """Probabilidades fg y borde a la resolución original."""
+        h, w = img_rgb.shape[:2]
+        fg, bd = self.prob_maps_native(img_rgb)
+        if fg.shape != (h, w):
+            fg = cv2.resize(fg, (w, h), interpolation=cv2.INTER_LINEAR)
+            bd = cv2.resize(bd, (w, h), interpolation=cv2.INTER_LINEAR)
+        return fg, bd
 
     def _predict(self, img_rgb):
-        fg, bd = self.prob_maps(img_rgb)
-        # el post-proceso se hace a 512 (como se entrenó/evaluó) y se reescala
         h, w = img_rgb.shape[:2]
-        fg_s = cv2.resize(fg, (self.sz, self.sz)); bd_s = cv2.resize(bd, (self.sz, self.sz))
+        fg_s, bd_s = self.prob_maps_native(img_rgb)
         if self.mode == "instance":
             small = watershed_instances(fg_s, bd_s, **self.kw)
         else:
-            small = semantic_instances(fg_s, self.kw["fg_thresh"], self.kw["min_area"])
+            scale = max(1.0, max(fg_s.shape[:2]) / 640.0)
+            eff_min_area = max(1, int(round(self.kw["min_area"] * (scale ** 2))))
+            small = semantic_instances(fg_s, self.kw["fg_thresh"], eff_min_area)
         masks = [cv2.resize(m, (w, h), interpolation=cv2.INTER_NEAREST) for m in small]
-        scores = np.array([float(fg_s[m.astype(bool)].mean()) for m in small])
+        scores = np.array([float(fg_s[m.astype(bool)].mean()) for m in small], dtype=np.float32)
+        fg = (
+            cv2.resize(fg_s, (w, h), interpolation=cv2.INTER_LINEAR)
+            if fg_s.shape != (h, w)
+            else fg_s
+        )
+        bd = (
+            cv2.resize(bd_s, (w, h), interpolation=cv2.INTER_LINEAR)
+            if bd_s.shape != (h, w)
+            else bd_s
+        )
         return SegmentationOutput(masks, scores, fg.astype(np.float32), {"fg_prob": fg, "bd_prob": bd})
 
     @property

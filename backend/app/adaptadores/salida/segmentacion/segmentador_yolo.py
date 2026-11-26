@@ -642,9 +642,15 @@ class SegmentadorYOLO:
                     ruta_unet,
                 )
         self._refinar_con_unet = bool(refinar_con_unet and self._unet is not None)
+        detalle_unet = (
+            f"True [{self._unet.arquitectura}, {self._unet.tamano_entrada}px, "
+            f"letterbox={self._unet.usa_letterbox}]"
+            if self._unet is not None
+            else "False"
+        )
         _LOG.info(
             "SegmentadorYOLO listo (unet_pincel=%s, unet_auto=%s)",
-            bool(self._unet),
+            detalle_unet,
             self._refinar_con_unet,
         )
 
@@ -669,8 +675,8 @@ class SegmentadorYOLO:
         n_det = len(resultado.masks)
         t_global = time.perf_counter() - t0
 
-        # Una sola pasada de U-Net (640x640) para toda la imagen: valida falsos positivos
-        # de baja confianza y refina bordes sin repetir U-Net por mosaico.
+        # Una sola pasada de U-Net en su resolución nativa (1024x1024 letterbox o 640x640):
+        # valida falsos positivos de baja confianza y refina bordes sin repetir U-Net por mosaico.
         unet_auto = self._unet if self._refinar_con_unet else None
         fg_unet = bd_unet = None
         t_unet_ini = time.perf_counter()

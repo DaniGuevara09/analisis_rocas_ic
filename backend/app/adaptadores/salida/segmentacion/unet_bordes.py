@@ -11,6 +11,43 @@ from app.dominio.modelo import Poligono, Punto
 
 _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+LADO_MAX_PINCEL_UNET = 640
+CajaLetterbox = tuple[int, int, int, int]
+
+
+def calcular_caja_letterbox(ancho: int, alto: int, lado: int) -> CajaLetterbox:
+    """Calcula `(pad_x, pad_y, nw, nh)` preservando la relación de aspecto en `lado`×`lado`."""
+    escala = min(lado / float(max(1, ancho)), lado / float(max(1, alto)))
+    nw = max(1, min(lado, int(round(ancho * escala))))
+    nh = max(1, min(lado, int(round(alto * escala))))
+    pad_x = (lado - nw) // 2
+    pad_y = (lado - nh) // 2
+    return pad_x, pad_y, nw, nh
+
+
+def aplicar_letterbox(img_rgb: np.ndarray, lado: int) -> tuple[np.ndarray, CajaLetterbox]:
+    """Redimensiona `img_rgb` con letterbox centrado y relleno en cero (igual al entrenamiento)."""
+    h, w = img_rgb.shape[:2]
+    escala = min(lado / float(max(1, w)), lado / float(max(1, h)))
+    pad_x, pad_y, nw, nh = calcular_caja_letterbox(w, h, lado)
+    try:
+        import cv2  # type: ignore[import-not-found]
+
+        interp = cv2.INTER_AREA if escala < 1.0 else cv2.INTER_LINEAR
+        redim = cv2.resize(img_rgb, (nw, nh), interpolation=interp)
+    except ImportError:
+        resample = Image.Resampling.BOX if escala < 1.0 else Image.Resampling.BILINEAR
+        redim = np.array(Image.fromarray(img_rgb).resize((nw, nh), resample), dtype=img_rgb.dtype)
+
+    lienzo = np.zeros((lado, lado, img_rgb.shape[2]), dtype=img_rgb.dtype)
+    lienzo[pad_y : pad_y + nh, pad_x : pad_x + nw] = redim
+    return lienzo, (pad_x, pad_y, nw, nh)
+
+
+def recortar_letterbox(mapa: np.ndarray, caja: CajaLetterbox) -> np.ndarray:
+    """Extrae la región válida `(nh, nw)` eliminando las bandas de relleno del letterbox."""
+    pad_x, pad_y, nw, nh = caja
+    return mapa[pad_y : pad_y + nh, pad_x : pad_x + nw]
 
 
 def _construir_arquitectura(usar_resnet34: bool = False):
@@ -143,40 +180,62 @@ class RefinadorUNet:
 
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         checkpoint = torch.load(ruta_pesos, map_location=self._device, weights_only=False)
-        self._sz = (
-            int(checkpoint.get("img_size", img_size)) if isinstance(checkpoint, dict) else img_size
+        es_dict = isinstance(checkpoint, dict)
+        self._sz = int(checkpoint.get("img_size", img_size)) if es_dict else img_size
+        self._letterbox = bool(checkpoint.get("letterbox", False)) if es_dict else False
+        estado = checkpoint.get("model_state_dict", checkpoint) if es_dict else checkpoint
+        self._usa_resnet34 = isinstance(estado, dict) and "input_conv.conv.0.weight" in estado
+        self._model = (
+            _construir_arquitectura(usar_resnet34=self._usa_resnet34).to(self._device).eval()
         )
-        estado = (
-            checkpoint.get("model_state_dict", checkpoint)
-            if isinstance(checkpoint, dict)
-            else checkpoint
-        )
-        usar_resnet34 = isinstance(estado, dict) and "input_conv.conv.0.weight" in estado
-        self._model = _construir_arquitectura(usar_resnet34=usar_resnet34).to(self._device).eval()
         self._model.load_state_dict(estado)
 
-    def mapas_probabilidad_nativas(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Devuelve (fg_prob, bd_prob) en resolución interna (`img_size`×`img_size`)."""
+    @property
+    def tamano_entrada(self) -> int:
+        return self._sz
+
+    @property
+    def usa_letterbox(self) -> bool:
+        return self._letterbox
+
+    @property
+    def arquitectura(self) -> str:
+        return "resnet34" if self._usa_resnet34 else "clasica"
+
+    def mapas_probabilidad_nativas(
+        self, img_rgb: np.ndarray, lado: int | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Devuelve `(fg_prob, bd_prob)` en resolución nativa (sin padding si usa letterbox)."""
         import cv2  # type: ignore[import-not-found]
         import torch  # type: ignore[import-not-found]
 
-        x = cv2.resize(img_rgb, (self._sz, self._sz), interpolation=cv2.INTER_AREA).astype(
-            np.float32
-        ) / 255.0
+        sz = self._sz if lado is None else max(64, ((int(lado) + 31) // 32) * 32)
+        caja: CajaLetterbox | None = None
+        if self._letterbox:
+            lienzo, caja = aplicar_letterbox(img_rgb, sz)
+            x = lienzo.astype(np.float32) / 255.0
+        else:
+            x = cv2.resize(img_rgb, (sz, sz), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+
         x = ((x - _MEAN) / _STD).transpose(2, 0, 1)
         tensor = torch.from_numpy(x).unsqueeze(0).to(self._device)
         with torch.inference_mode():
             fl, bl = self._model(tensor)
         fg = torch.sigmoid(fl.float()).squeeze().cpu().numpy()
         bd = torch.sigmoid(bl.float()).squeeze().cpu().numpy()
+        if caja is not None:
+            fg = recortar_letterbox(fg, caja)
+            bd = recortar_letterbox(bd, caja)
         return fg, bd
 
-    def mapas_probabilidad(self, img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def mapas_probabilidad(
+        self, img_rgb: np.ndarray, lado: int | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Devuelve (fg_prob, bd_prob) en resolución original del array RGB."""
         import cv2  # type: ignore[import-not-found]
 
         h, w = img_rgb.shape[:2]
-        fg, bd = self.mapas_probabilidad_nativas(img_rgb)
+        fg, bd = self.mapas_probabilidad_nativas(img_rgb, lado=lado)
         if fg.shape != (h, w):
             fg = cv2.resize(fg, (w, h), interpolation=cv2.INTER_LINEAR)
             bd = cv2.resize(bd, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -198,7 +257,12 @@ class RefinadorUNet:
             return None
 
         img_rgb = np.array(recorte, dtype=np.uint8)
-        fg_prob, bd_prob = self.mapas_probabilidad(img_rgb)
+        lado_pincel = (
+            min(self._sz, LADO_MAX_PINCEL_UNET)
+            if max(w_rec, h_rec) <= LADO_MAX_PINCEL_UNET
+            else self._sz
+        )
+        fg_prob, bd_prob = self.mapas_probabilidad(img_rgb, lado=lado_pincel)
 
         # La elevación de Watershed combina probabilidad de borde (grietas) y fondo.
         borde_u8 = np.clip((bd_prob * 0.8 + (1.0 - fg_prob) * 0.2) * 255.0, 0, 255).astype(np.uint8)
@@ -369,11 +433,14 @@ def recuperar_rocas_en_huecos(
     dist = cv2.distanceTransform(semillas, cv2.DIST_L2, 5)
     dist_suave = cv2.GaussianBlur(dist, (3, 3), 0.9)
 
-    # 1. Semillas en picos locales de distancia (evita partir una misma roca pequeña en dos).
-    k_pico = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    # 1. Semillas en picos locales de distancia (escalado a 640 o 1024 px para no dividir rocas).
+    escala_grid = max(1.0, max(uh, uw) / 640.0)
+    lado_pico = max(5, int(round(11 * escala_grid)) | 1)
+    k_pico = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (lado_pico, lado_pico))
+    dist_min_pico = 1.8 * escala_grid
     es_pico = (
         (semillas > 0)
-        & (dist_suave >= 1.8)
+        & (dist_suave >= dist_min_pico)
         & (dist_suave == cv2.dilate(dist_suave, k_pico))
     )
     n_picos, mapa_picos = cv2.connectedComponents(es_pico.astype(np.uint8))
@@ -451,7 +518,7 @@ def recuperar_rocas_en_huecos(
         parche = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
         parche[ys_r - y0, xs_r - x0] = 1
 
-        # Suavizado 2× en parches pequeños para eliminar escalones de la rejilla 640×640.
+        # Suavizado 2× en parches pequeños para eliminar escalones de la rejilla nativa.
         ph, pw = parche.shape[:2]
         factor = 2 if max(ph, pw) < 40 else 1
         if factor > 1:
