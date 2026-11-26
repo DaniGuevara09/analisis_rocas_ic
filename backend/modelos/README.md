@@ -4,6 +4,7 @@ Esta carpeta es el **espacio reservado para el modelo de segmentación**. El con
 
 ```
 backend/modelos/best.pt        (dentro del contenedor: /app/modelos/best.pt, variable RUTA_MODELO)
+backend/modelos/unet_best.pth  (opcional: /app/modelos/unet_best.pth, variable RUTA_MODELO_UNET)
 ```
 
 ## Estado sin modelo

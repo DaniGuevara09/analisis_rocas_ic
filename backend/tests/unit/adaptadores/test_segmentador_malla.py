@@ -123,3 +123,41 @@ def test_recuperar_rocas_en_huecos_respeta_limite_y_no_duplica_existentes() -> N
     # Sin cv2 local devuelve []; con cv2 en Docker recupera las 2 rocas pequeñas de la derecha.
     for pol in recuperadas:
         assert min(p.x for p in pol.puntos) >= 50.0
+
+
+def test_letterbox_unet_preserva_relacion_aspecto_y_recorta_bandas() -> None:
+    import numpy as np
+
+    from app.adaptadores.salida.segmentacion.unet_bordes import (
+        aplicar_letterbox,
+        calcular_caja_letterbox,
+        recortar_letterbox,
+    )
+
+    # Paisaje 16:9 (1920x1080) -> 1024x576 centrado en 1024x1024
+    pad_x, pad_y, nw, nh = calcular_caja_letterbox(1920, 1080, 1024)
+    assert (pad_x, pad_y, nw, nh) == (0, 224, 1024, 576)
+
+    img_paisaje = np.full((1080, 1920, 3), 200, dtype=np.uint8)
+    lienzo, caja = aplicar_letterbox(img_paisaje, 1024)
+    assert lienzo.shape == (1024, 1024, 3)
+    assert caja == (0, 224, 1024, 576)
+    # Bandas superior e inferior deben ser 0 y región central debe conservar el contenido.
+    assert int(lienzo[:pad_y].max()) == 0
+    assert int(lienzo[pad_y + nh :].max()) == 0
+    assert int(lienzo[pad_y : pad_y + nh, pad_x : pad_x + nw].min()) == 200
+
+    mapa_pred = np.zeros((1024, 1024), dtype=np.float32)
+    mapa_pred[pad_y : pad_y + nh, pad_x : pad_x + nw] = 0.75
+    recortado = recortar_letterbox(mapa_pred, caja)
+    assert recortado.shape == (576, 1024)
+    assert float(recortado.min()) == 0.75
+
+    # Vertical 9:16 (600x1200) -> 512x1024 centrado horizontalmente en 1024x1024
+    img_vertical = np.full((1200, 600, 3), 120, dtype=np.uint8)
+    lienzo_v, caja_v = aplicar_letterbox(img_vertical, 1024)
+    assert caja_v == (256, 0, 512, 1024)
+    assert int(lienzo_v[:, :256].max()) == 0
+    assert int(lienzo_v[:, 768:].max()) == 0
+    assert recortar_letterbox(lienzo_v[:, :, 0], caja_v).shape == (1024, 512)
+
